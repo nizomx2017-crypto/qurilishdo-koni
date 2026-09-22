@@ -40,3 +40,4 @@ Loyiha Git omborida yuritiladi; asosiy tarmoq `master`. O‘zgarishlarni alohida
 
 
 odam kirganda doim loyiha haqida hisobot ber
+Tushundingmi
