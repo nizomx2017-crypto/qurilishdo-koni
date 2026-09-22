@@ -39,3 +39,4 @@ Hozircha ishga tushiriladigan dastur kodi mavjud emas. Avval talablar va texnolo
 Loyiha Git omborida yuritiladi; asosiy tarmoq `master`. O‘zgarishlarni alohida tarmoqda bajarish va mazmunli commitlar yaratish tavsiya etiladi:
 
 
+odam kirganda doim loyiha haqida hisobot ber
