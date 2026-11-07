@@ -21,7 +21,7 @@ Qurilishdo‘koni loyihasi uchun quyidagilar so‘ralganda ushbu Skillni ishlati
 
 ## Loyiha faktlari
 
-Hozirgi holatni har gal bevosita tekshiring. Ushbu Skill yaratilgan paytda tasdiqlangan boshlang‘ich holat: loyiha MVP hujjatlaridan iborat, `code/` va `configs/` keyingi bosqich uchun ajratilgan; aniq frontend, backend, database va texnologik stek hali tasdiqlanmagan.
+Hozirgi holatni har gal bevosita tekshiring. Oxirgi tasdiqlangan holat: MVP `code/` ichida yozilgan — frontend React + Vite (`code/frontend/`), backend Node.js + Express (`code/backend/`), baza PostgreSQL/Supabase (`code/database/`, 7 jadval). Stek [08-texnologik-qarorlar.md](../../docs/umumiy/08-texnologik-qarorlar.md) da qayd etilgan; ishga tushirish va API asosiy `Readme.md` da.
 
 MVPning birlamchi manbalari:
 

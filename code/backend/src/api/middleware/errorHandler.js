@@ -41,6 +41,7 @@ function errorHandler(err, req, res, next) {
       return res.status(400).json({ error: 'Qiymat formati noto\'g\'ri' });
     case 'ECONNREFUSED':
     case 'ENOTFOUND':
+    case 'ENETUNREACH':
     case 'ETIMEDOUT':
     case '28P01': // invalid_password
     case '3D000': // invalid_catalog_name (baza yo'q)
