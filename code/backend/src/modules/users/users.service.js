@@ -1,7 +1,7 @@
 /**
- * USERS — biznes mantiq
- *  - parol hech qachon ochiq saqlanmaydi: scrypt bilan hash qilinadi
- *  - password_hash API javobida qaytmaydi (registry'da u ustun sifatida yo'q)
+ * USERS — parol bilan ishlash
+ *  - parol hech qachon ochiq saqlanmaydi: scrypt bilan hash qilinadi ("salt:hash")
+ *  - password_hash API javobida hech qachon qaytmaydi (publicUser orqali tozalanadi)
  */
 const crypto = require('crypto');
 
@@ -14,20 +14,21 @@ function hashPassword(password) {
 function verifyPassword(password, stored) {
   const [salt, hash] = String(stored).split(':');
   if (!salt || !hash) return false;
-  const check = crypto.scryptSync(password, salt, 64);
-  return crypto.timingSafeEqual(check, Buffer.from(hash, 'hex'));
+  const check = crypto.scryptSync(String(password), salt, 64);
+  const expected = Buffer.from(hash, 'hex');
+  return expected.length === check.length && crypto.timingSafeEqual(check, expected);
 }
 
-function applyPassword(data) {
-  const { password, ...rest } = data;
-  if (password) rest.password_hash = hashPassword(password);
-  return rest;
+/** API javobiga chiqadigan foydalanuvchi ma'lumotlari */
+function publicUser(row) {
+  return {
+    id: row.id,
+    full_name: row.full_name,
+    email: row.email,
+    phone: row.phone,
+    role: row.role,
+    created_at: row.created_at,
+  };
 }
 
-module.exports = {
-  hashPassword,
-  verifyPassword,
-  beforeCreate: async (data) => applyPassword(data),
-  // Tahrirlashda parol bo'sh qoldirilsa — eski parol o'zgarmaydi
-  beforeUpdate: async (data) => applyPassword(data),
-};
+module.exports = { hashPassword, verifyPassword, publicUser };

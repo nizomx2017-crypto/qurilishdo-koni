@@ -1,17 +1,24 @@
 {
   "name": "qurilish-dokoni-backend",
   "version": "1.0.0",
-  "description": "Qurilishdo'koni — REST API (Node.js + Express + PostgreSQL)",
+  "description": "Qurilishdo'koni — internet-do'kon REST API (Node.js + Express + PostgreSQL)",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "db:init": "node scripts/db-init.js"
+    "db:init": "node scripts/db-init.js",
+    "test:smoke": "node scripts/smoke-test.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.21.2",
+    "express-rate-limit": "^7.5.1",
+    "helmet": "^8.3.0",
+    "jsonwebtoken": "^9.0.3",
     "pg": "^8.13.1"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }

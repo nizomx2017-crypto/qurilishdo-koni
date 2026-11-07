@@ -16,13 +16,18 @@ function errorHandler(err, req, res, next) {
   if (err.type === 'entity.parse.failed') {
     return res.status(400).json({ error: 'JSON formati noto\'g\'ri' });
   }
+  if (err.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'Yuborilgan ma\'lumot hajmi juda katta' });
+  }
 
   switch (err.code) {
     case '23505': // unique_violation
       return res.status(409).json({ error: 'Bunday qiymat allaqachon mavjud', details: err.detail });
+    case '23001': // restrict_violation (ON DELETE RESTRICT)
     case '23503': // foreign_key_violation
+      // Xabar matni bazaning tiliga bog'liq (ru/en), shuning uchun so'rov metodiga qaraymiz
       return res.status(409).json({
-        error: err.message.includes('update or delete')
+        error: req.method === 'DELETE'
           ? 'Bu yozuvni o\'chirib bo\'lmaydi: unga boshqa jadvallarda bog\'langan yozuvlar bor'
           : 'Tanlangan bog\'langan yozuv mavjud emas',
         details: err.detail,
@@ -35,7 +40,12 @@ function errorHandler(err, req, res, next) {
     case '22003': // numeric_value_out_of_range
       return res.status(400).json({ error: 'Qiymat formati noto\'g\'ri' });
     case 'ECONNREFUSED':
-      return res.status(503).json({ error: 'Bazaga ulanib bo\'lmadi. PostgreSQL ishga tushganini va .env sozlamalarini tekshiring' });
+    case 'ENOTFOUND':
+    case 'ETIMEDOUT':
+    case '28P01': // invalid_password
+    case '3D000': // invalid_catalog_name (baza yo'q)
+      console.error('Bazaga ulanish xatosi:', err.code, err.message);
+      return res.status(503).json({ error: 'Bazaga ulanib bo\'lmadi. PostgreSQL ishga tushganini va .env (DATABASE_URL yoki DB_*) sozlamalarini tekshiring' });
     default:
       console.error(err);
       return res.status(500).json({ error: 'Serverda kutilmagan xato' });

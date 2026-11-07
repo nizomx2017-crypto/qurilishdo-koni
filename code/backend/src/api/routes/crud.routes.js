@@ -1,27 +1,19 @@
 /**
- * REST API marshrutlari — har bir resurs uchun bir xil:
+ * Admin uchun umumiy CRUD marshrutlari (registry'dagi har bir resurs: categories, products).
+ * /api/admin ostida ulanadi, shuning uchun oldidan authenticate + requireAdmin o'tadi.
  *
- *   GET    /api/:resource            ro'yxat   ?page=1&limit=10&search=&sort=id&order=desc
- *   GET    /api/:resource/options    select uchun [{id,label}]
- *   GET    /api/:resource/:id        bitta yozuv
- *   POST   /api/:resource            qo'shish
- *   PUT    /api/:resource/:id        tahrirlash
- *   DELETE /api/:resource/:id        o'chirish
+ *   GET    /api/admin/:resource            ro'yxat   ?page=1&limit=10&search=&sort=id&order=desc
+ *   GET    /api/admin/:resource/options    select uchun [{id,label}]
+ *   GET    /api/admin/:resource/:id        bitta yozuv
+ *   POST   /api/admin/:resource            qo'shish
+ *   PUT    /api/admin/:resource/:id        tahrirlash
+ *   DELETE /api/admin/:resource/:id        o'chirish
  */
 const express = require('express');
 const crud = require('../../services/crud.service');
-const HttpError = require('../../utils/httpError');
+const { wrap, idOf } = require('./helpers');
 
 const router = express.Router();
-
-// async xatolarni error middleware'ga uzatish
-const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
-
-const idOf = (req) => {
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0 || id > 2147483647) throw new HttpError(400, 'Noto\'g\'ri ID');
-  return id;
-};
 
 router.get('/:resource', wrap(async (req, res) => {
   res.json(await crud.list(req.params.resource, req.query));
