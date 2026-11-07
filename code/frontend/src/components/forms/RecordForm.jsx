@@ -29,7 +29,7 @@ export default function RecordForm({ resource, record, onClose, onSaved }) {
   useEffect(() => {
     const refs = [...new Set(fields.filter((c) => c.type === 'ref').map((c) => c.ref))];
     refs.forEach((ref) =>
-      api.options(ref)
+      api.admin.options(ref)
         .then((opts) => setRefOptions((o) => ({ ...o, [ref]: opts })))
         .catch(() => setRefOptions((o) => ({ ...o, [ref]: [] })))
     );
@@ -49,8 +49,8 @@ export default function RecordForm({ resource, record, onClose, onSaved }) {
     if (isEdit && !payload.password) delete payload.password; // parol bo'sh => o'zgarmaydi
     try {
       const saved = isEdit
-        ? await api.update(resource.key, record.id, payload)
-        : await api.create(resource.key, payload);
+        ? await api.admin.update(resource.key, record.id, payload)
+        : await api.admin.create(resource.key, payload);
       onSaved(saved, isEdit);
     } catch (err) {
       setMessage(err.message);

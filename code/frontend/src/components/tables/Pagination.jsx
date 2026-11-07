@@ -1,4 +1,4 @@
-// Sahifalash: oldingi / raqamlar / keyingi + sahifadagi qatorlar soni
+// Sahifalash: oldingi / raqamlar / keyingi + (onLimit berilsa) sahifadagi qatorlar soni
 function pageList(page, pages) {
   const set = new Set([1, pages, page - 1, page, page + 1].filter((p) => p >= 1 && p <= pages));
   const sorted = [...set].sort((a, b) => a - b);
@@ -18,9 +18,11 @@ export default function Pagination({ page, pages, total, limit, onPage, onLimit 
     <div className="pagination">
       <div className="pg-info">
         {from}–{to} / jami <b>{total}</b>
-        <select value={limit} onChange={(e) => onLimit(Number(e.target.value))} aria-label="Sahifadagi qatorlar">
-          {[5, 10, 20, 50].map((n) => <option key={n} value={n}>{n} ta</option>)}
-        </select>
+        {onLimit && (
+          <select value={limit} onChange={(e) => onLimit(Number(e.target.value))} aria-label="Sahifadagi qatorlar">
+            {[5, 10, 20, 50].map((n) => <option key={n} value={n}>{n} ta</option>)}
+          </select>
+        )}
       </div>
       <div className="pg-buttons">
         <button disabled={page <= 1} onClick={() => onPage(page - 1)}>‹ Oldingi</button>

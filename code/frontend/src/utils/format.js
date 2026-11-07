@@ -3,19 +3,23 @@
 // Bazadagi inglizcha qiymatlarning o'zbekcha nomlari
 export const VALUE_LABELS = {
   active: 'Faol', inactive: 'Nofaol',
-  in: 'Kirim', out: 'Chiqim',
-  unpaid: 'To\'lanmagan', partial: 'Qisman', paid: 'To\'langan',
-  new: 'Yangi', completed: 'Bajarildi', cancelled: 'Bekor qilingan',
-  cash: 'Naqd', card: 'Karta', transfer: 'O\'tkazma', debt: 'Qarzga',
-  pending: 'Kutilmoqda', open: 'Ochiq', closed: 'Yopilgan',
+  new: 'Yangi', confirmed: 'Tasdiqlangan', shipped: 'Yo\'lda',
+  delivered: 'Yetkazildi', cancelled: 'Bekor qilingan',
 };
 
 // Holat belgisi rangi
 export const VALUE_TONE = {
-  active: 'ok', paid: 'ok', completed: 'ok', in: 'ok', closed: 'muted',
-  inactive: 'muted', cancelled: 'muted',
-  unpaid: 'bad', out: 'bad', open: 'warn', partial: 'warn', pending: 'warn', new: 'info',
-  debt: 'warn', cash: 'info', card: 'info', transfer: 'info',
+  active: 'ok', inactive: 'muted',
+  new: 'info', confirmed: 'warn', shipped: 'warn', delivered: 'ok', cancelled: 'muted',
+};
+
+// Buyurtma holatini qaysi holatlarga o'tkazish mumkin (backenddagi qoida bilan bir xil)
+export const ORDER_TRANSITIONS = {
+  new: ['confirmed', 'cancelled'],
+  confirmed: ['shipped', 'cancelled'],
+  shipped: ['delivered', 'cancelled'],
+  delivered: [],
+  cancelled: [],
 };
 
 const nf = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 });
