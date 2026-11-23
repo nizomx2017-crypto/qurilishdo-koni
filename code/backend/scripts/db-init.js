@@ -49,7 +49,7 @@ async function resetDatabase({ log = console.log, withAdmin = true } = {}) {
       log(`✔ ${path.relative(dbDir, file)}`);
     }
     await runMigrations(client, log);
-    if (withAdmin) await seedAdmin(client, log);
+    if (withAdmin) await seedAdmin(client, { log });
   } finally {
     await client.end();
   }
