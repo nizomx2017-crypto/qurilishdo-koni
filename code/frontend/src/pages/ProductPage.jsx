@@ -13,9 +13,13 @@ export default function ProductPage() {
   const { addToCart, busyId } = useAddToCart();
 
   useEffect(() => {
+    let cancelled = false; // tez almashganda eski javob yangisini bosib ketmasin
     setProduct(null);
     setError('');
-    api.product(id).then(setProduct).catch((e) => setError(e.status === 404 ? 'Mahsulot topilmadi yoki sotuvda emas' : e.message));
+    api.product(id)
+      .then((p) => { if (!cancelled) setProduct(p); })
+      .catch((e) => { if (!cancelled) setError(e.status === 404 ? 'Mahsulot topilmadi yoki sotuvda emas' : e.message); });
+    return () => { cancelled = true; };
   }, [id]);
 
   if (error) return <div className="state"><p>{error}</p><Link to="/" className="btn ghost">Katalogga qaytish</Link></div>;
