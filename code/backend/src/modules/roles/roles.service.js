@@ -61,7 +61,7 @@ function toDto(row, accessIds, actor) {
 
 const ROLE_SELECT = `
   SELECT r.id, r.name, r.type, r.description, r.created_at,
-         (SELECT COUNT(*)::int FROM users u WHERE u.role_id = r.id AND u.login IS NOT NULL) AS users_count
+         (SELECT COUNT(*)::int FROM users u WHERE u.role_id = r.id AND u.username IS NOT NULL) AS users_count
   FROM roles r`;
 
 async function getById(actor, id, client = db) {

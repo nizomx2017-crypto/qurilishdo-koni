@@ -1,14 +1,15 @@
 # Render Blueprint — backend (Express API) ni deploy qilish.
 # Render: New -> Blueprint -> shu repozitoriyni tanlang. Maxfiy qiymatlar (sync: false) Render panelida so'raladi.
 # Har ishga tushishda bajarilmagan migratsiyalar qo'llanadi (db:migrate — hech narsa o'chirmaydi, idempotent).
-# Boshlang'ich admin Render'da avtomatik YARATILMAYDI (kod logga tushmasligi uchun) — README'ga qarang.
+# Boshlang'ich admin: ADMIN_INITIAL_PASSWORD berilgan bo'lsagina yaratiladi (--only-with-env) — parol
+# hech qachon logga chiqmaydi. Admin birinchi kirishda parolni o'zgartiradi; keyin bu env'ni o'chiring.
 services:
   - type: web
     name: qurilishdokoni-api
     runtime: node
     rootDir: code/backend
     buildCommand: npm ci --omit=dev
-    startCommand: npm run db:migrate && npm start
+    startCommand: npm run db:migrate && npm run db:seed-admin -- --only-with-env && npm start
     healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
@@ -21,3 +22,7 @@ services:
         generateValue: true
       - key: FRONTEND_URL
         sync: false   # masalan: https://qurilishdokoni.vercel.app (bir nechta bo'lsa vergul bilan)
+      - key: ADMIN_USERNAME
+        value: admin
+      - key: ADMIN_INITIAL_PASSWORD
+        sync: false   # faqat birinchi deploy uchun; admin parolni almashtirgach o'chiring

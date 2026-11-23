@@ -3,14 +3,15 @@
  * Kim nimani boshqarishi (ADMIN > DIRECTOR > MANAGER) service qatlamida ham tekshiriladi.
  *
  *   GET   /api/users                       ADMIN, DIRECTOR   ?search=&roleType=&isActive=&page=&limit=
- *   POST  /api/users                       ADMIN, DIRECTOR   { fullName, login, roleId } -> { user, code }
- *   PATCH /api/users/:id                   ADMIN, DIRECTOR   { fullName?, login?, roleId? }
+ *   POST  /api/users                       ADMIN, DIRECTOR   { username, fullName, roleId, password? }
+ *                                                            -> { user, temporaryPassword? } (berilmasa generatsiya)
+ *   PATCH /api/users/:id                   ADMIN, DIRECTOR   { fullName?, username?, roleId? }
  *   PATCH /api/users/:id/status            ADMIN, DIRECTOR   { isActive }
- *   POST  /api/users/:id/regenerate-code   ADMIN, DIRECTOR   -> { user, code }
+ *   POST  /api/users/:id/reset-password    ADMIN, DIRECTOR   { password? } -> { user, temporaryPassword }
  *   GET/POST /api/roles, PUT/DELETE /api/roles/:id           ADMIN, DIRECTOR
  *   PUT   /api/roles/:id/accesses          ADMIN, DIRECTOR   { accessIds: [] }
  *   GET   /api/accesses                    ADMIN, DIRECTOR   sahifalar bo'yicha guruhlangan
- *   GET   /api/login-attempts              faqat ADMIN       ?page=&limit=&login=&ip=&success=&reason=
+ *   GET   /api/login-attempts              faqat ADMIN       ?page=&limit=&username=&ip=&success=&reason=
  */
 const express = require('express');
 const users = require('../../modules/users/users.service');
@@ -24,7 +25,7 @@ const { wrap, idOf } = require('./helpers');
 const router = express.Router();
 const managers = [authenticate, requireRoleType('ADMIN', 'DIRECTOR')];
 
-// Yangi kod javobda bir marta qaytadi — hech qayerda keshlanmasin
+// Vaqtinchalik parol javobda bir marta qaytadi — hech qayerda keshlanmasin
 const noStore = (req, res, next) => {
   res.set('Cache-Control', 'no-store');
   next();
@@ -42,8 +43,8 @@ router.patch('/users/:id', managers, wrap(async (req, res) => {
 router.patch('/users/:id/status', managers, wrap(async (req, res) => {
   res.json(await users.setStatus(req.user, idOf(req), req.body));
 }));
-router.post('/users/:id/regenerate-code', managers, noStore, wrap(async (req, res) => {
-  res.json(await users.regenerateCode(req.user, idOf(req)));
+router.post('/users/:id/reset-password', managers, noStore, wrap(async (req, res) => {
+  res.json(await users.resetPassword(req.user, idOf(req), req.body));
 }));
 
 router.get('/roles', managers, wrap(async (req, res) => {

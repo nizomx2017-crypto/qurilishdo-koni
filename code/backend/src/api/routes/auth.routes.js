@@ -1,15 +1,18 @@
 /**
  * Xodimlar paneliga kirish (mijozlar uchun akkaunt yo'q):
  *   GET  /api/auth/captcha  -> { captchaId, svg }
- *   POST /api/auth/login    { login, code, captchaId?, captchaAnswer? } -> { accessToken, refreshToken, user }
+ *   POST /api/auth/login    { username, password, captchaId?, captchaAnswer? }
+ *                           -> { accessToken, refreshToken, mustChangePassword, user }
  *   POST /api/auth/refresh  { refreshToken }  -> { accessToken, refreshToken }  (rotatsiya)
  *   POST /api/auth/logout   { refreshToken }  -> 204
- *   GET  /api/auth/me       (Bearer)          -> { id, fullName, login, role, fullAccess, accesses }
+ *   GET  /api/auth/me       (Bearer)          -> { id, fullName, username, role, fullAccess, accesses, mustChangePassword }
+ *   POST /api/auth/change-password (Bearer) { currentPassword, newPassword } -> yangi token juftligi
+ * must_change_password holatida ham /me, /change-password va /logout ishlaydi (qolganlari 403).
  */
 const express = require('express');
 const auth = require('../../modules/auth/auth.service');
 const { createCaptcha } = require('../../utils/captcha');
-const { authenticate } = require('../middleware/authenticate');
+const { authenticateAllowingPasswordChange } = require('../middleware/authenticate');
 const limits = require('../middleware/rateLimits');
 const { wrap } = require('./helpers');
 
@@ -39,8 +42,12 @@ router.post('/logout', wrap(async (req, res) => {
   res.status(204).end();
 }));
 
-router.get('/me', authenticate, wrap(async (req, res) => {
+router.get('/me', authenticateAllowingPasswordChange, wrap(async (req, res) => {
   res.json(await auth.me(req.user.id));
+}));
+
+router.post('/change-password', limits.login, authenticateAllowingPasswordChange, wrap(async (req, res) => {
+  res.json(await auth.changePassword(req.user, req.body, meta(req)));
 }));
 
 module.exports = router;

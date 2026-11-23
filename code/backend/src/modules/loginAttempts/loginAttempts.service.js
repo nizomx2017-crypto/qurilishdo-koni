@@ -1,8 +1,10 @@
-// LOGIN ATTEMPTS — kirish urinishlari jurnali (faqat ADMIN). ?page=&limit=&login=&ip=&success=&reason=
+// LOGIN ATTEMPTS — kirish urinishlari jurnali (faqat ADMIN). ?page=&limit=&username=&ip=&success=&reason=
+// (jadvaldagi ustun nomi tarixan "login" — unda kiritilgan username saqlanadi)
 const db = require('../../config/db');
 const HttpError = require('../../utils/httpError');
 
-const REASONS = ['SUCCESS', 'WRONG_CODE', 'NO_USER', 'INACTIVE', 'LOCKED', 'CAPTCHA_REQUIRED', 'CAPTCHA_INVALID'];
+// WRONG_CODE — eski (kod bilan kirish davridagi) yozuvlar uchun
+const REASONS = ['SUCCESS', 'WRONG_PASSWORD', 'NO_USER', 'INACTIVE', 'LOCKED', 'CAPTCHA_REQUIRED', 'CAPTCHA_INVALID', 'WRONG_CODE'];
 
 async function list(query = {}) {
   const page = Math.max(1, parseInt(query.page, 10) || 1);
@@ -10,9 +12,9 @@ async function list(query = {}) {
   const params = [];
   const conds = [];
 
-  const login = String(query.login || '').trim().slice(0, 100);
-  if (login) {
-    params.push(`%${login}%`);
+  const username = String(query.username || '').trim().slice(0, 100);
+  if (username) {
+    params.push(`%${username}%`);
     conds.push(`login ILIKE $${params.length}`);
   }
   const ip = String(query.ip || '').trim().slice(0, 64);
@@ -34,7 +36,7 @@ async function list(query = {}) {
   const total = (await db.query(`SELECT COUNT(*)::int AS n FROM login_attempts ${where}`, params)).rows[0].n;
   params.push(limit, (page - 1) * limit);
   const { rows } = await db.query(
-    `SELECT id, login, ip, success, reason, created_at AS "createdAt"
+    `SELECT id, login AS username, ip, success, reason, created_at AS "createdAt"
      FROM login_attempts ${where}
      ORDER BY id DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
     params

@@ -28,7 +28,7 @@ function assertCanManage(actor, type) {
 async function assertAnotherActiveAdmin(client, { excludeUserId = null, excludeRoleId = null } = {}) {
   const { rows } = await client.query(
     `SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id
-     WHERE r.type = 'ADMIN' AND u.is_active AND u.login IS NOT NULL AND u.code_hash IS NOT NULL
+     WHERE r.type = 'ADMIN' AND u.is_active AND u.username IS NOT NULL AND u.password_hash IS NOT NULL
        AND ($1::int IS NULL OR u.id <> $1) AND ($2::int IS NULL OR r.id <> $2)
      FOR UPDATE OF u`,
     [excludeUserId, excludeRoleId]

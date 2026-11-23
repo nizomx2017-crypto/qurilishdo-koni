@@ -1,23 +1,26 @@
 /**
  * USERS — xodimlarni boshqarish (faqat ADMIN va DIRECTOR; ierarxiya hierarchy.js da).
- *  - xodim o'zi ro'yxatdan o'tmaydi, uni admin/direktor yaratadi;
- *  - kirish kodi generatsiya qilinadi va javobda faqat BIR MARTA qaytadi (yaratilganda / yangilanganda);
- *  - kod yangilansa eski kod ishlamaydi va xodimning barcha sessiyalari bekor qilinadi;
+ *  - xodim o'zi ro'yxatdan o'tmaydi, uni admin/direktor username, ism, role va VAQTINCHALIK parol bilan yaratadi
+ *    (parol berilmasa — server 12 belgili parol generatsiya qiladi va javobda BIR MARTA qaytaradi);
+ *  - vaqtinchalik parol bilan kirgan xodim avval parolini o'zgartirishi shart (must_change_password);
+ *  - reset-password: yangi vaqtinchalik parol, token_version++ va barcha sessiyalar yopiladi;
  *  - hech kim o'zini bloklay olmaydi va o'z role'ini o'zgartira olmaydi.
- * code_hash hech qachon javobga chiqmaydi.
+ * password_hash hech qachon javobga chiqmaydi.
  */
 const db = require('../../config/db');
 const HttpError = require('../../utils/httpError');
-const { generateCode, hashCode } = require('../../utils/code');
+const {
+  normalizeUsername, isValidUsername, passwordProblem, generatePassword, hashPassword,
+} = require('../../utils/password');
 const { revokeAllSessions } = require('../auth/auth.service');
 const { assertCanManage, assertAnotherActiveAdmin, canManageType } = require('./hierarchy');
 
-const LOGIN_RE = /^[a-zA-Z0-9._-]{3,50}$/;
 const ROLE_TYPES = ['ADMIN', 'DIRECTOR', 'MANAGER'];
+const USERNAME_HINT = 'Username 3–32 belgi: a-z, 0-9, _ va .';
 
 const USER_SELECT = `
-  SELECT u.id, u.full_name, u.login, u.is_active, u.failed_attempts, u.locked_until,
-         u.created_at, u.updated_at, u.code_hash IS NOT NULL AS has_code,
+  SELECT u.id, u.full_name, u.username, u.is_active, u.failed_attempts, u.locked_until,
+         u.must_change_password, u.password_changed_at, u.created_at, u.updated_at,
          r.id AS role_id, r.name AS role_name, r.type AS role_type,
          c.full_name AS created_by_name
   FROM users u
@@ -28,10 +31,12 @@ function toDto(row, actor) {
   return {
     id: row.id,
     fullName: row.full_name,
-    login: row.login,
+    username: row.username,
     isActive: row.is_active,
     lockedUntil: row.locked_until && new Date(row.locked_until) > new Date() ? row.locked_until : null,
     failedAttempts: row.failed_attempts,
+    mustChangePassword: row.must_change_password,
+    passwordChangedAt: row.password_changed_at,
     role: { id: row.role_id, name: row.role_name, type: row.role_type },
     createdBy: row.created_by_name || null,
     createdAt: row.created_at,
@@ -53,10 +58,10 @@ function readBody(body, { partial }) {
     if (v.length < 2 || v.length > 150) errors.fullName = 'F.I.Sh. 2–150 belgi bo\'lsin';
     else out.fullName = v;
   }
-  if (b.login !== undefined || !partial) {
-    const v = typeof b.login === 'string' ? b.login.trim() : '';
-    if (!LOGIN_RE.test(v)) errors.login = 'Login 3–50 belgi: lotin harflari, raqam, . _ -';
-    else out.login = v;
+  if (b.username !== undefined || !partial) {
+    const v = normalizeUsername(b.username);
+    if (!isValidUsername(v)) errors.username = USERNAME_HINT;
+    else out.username = v;
   }
   if (b.roleId !== undefined || !partial) {
     const v = Number(b.roleId);
@@ -67,6 +72,14 @@ function readBody(body, { partial }) {
   return out;
 }
 
+/** Vaqtinchalik parol: berilgan bo'lsa siyosat bo'yicha tekshiriladi, berilmasa generatsiya qilinadi */
+function temporaryPassword(raw, username) {
+  if (raw === undefined || raw === null || raw === '') return { password: generatePassword(), generated: true };
+  const problem = passwordProblem(raw, username);
+  if (problem) throw new HttpError(400, problem, { password: problem }, 'WEAK_PASSWORD');
+  return { password: raw, generated: false };
+}
+
 async function getRole(client, id) {
   const { rows } = await client.query('SELECT id, name, type FROM roles WHERE id = $1', [id]);
   if (!rows[0]) throw new HttpError(400, 'Role topilmadi', { roleId: 'Role topilmadi' });
@@ -75,9 +88,9 @@ async function getRole(client, id) {
 
 async function lockTarget(client, id) {
   const { rows } = await client.query(
-    `SELECT u.id, u.login, u.is_active, u.role_id, r.type AS role_type
+    `SELECT u.id, u.username, u.is_active, u.role_id, r.type AS role_type
      FROM users u JOIN roles r ON r.id = u.role_id
-     WHERE u.id = $1 AND u.login IS NOT NULL FOR UPDATE OF u`,
+     WHERE u.id = $1 AND u.username IS NOT NULL FOR UPDATE OF u`,
     [id]
   );
   if (!rows[0]) throw new HttpError(404, 'Xodim topilmadi');
@@ -85,7 +98,7 @@ async function lockTarget(client, id) {
 }
 
 async function getById(actor, id, client = db) {
-  const { rows } = await client.query(`${USER_SELECT} WHERE u.id = $1 AND u.login IS NOT NULL`, [id]);
+  const { rows } = await client.query(`${USER_SELECT} WHERE u.id = $1 AND u.username IS NOT NULL`, [id]);
   if (!rows[0]) throw new HttpError(404, 'Xodim topilmadi');
   return toDto(rows[0], actor);
 }
@@ -96,12 +109,12 @@ async function list(actor, query = {}) {
   const page = Math.max(1, parseInt(query.page, 10) || 1);
   const limit = Math.min(100, Math.max(1, parseInt(query.limit, 10) || 20));
   const params = [];
-  const conds = ['u.login IS NOT NULL'];
+  const conds = ['u.username IS NOT NULL'];
 
   const term = String(query.search || '').trim().slice(0, 100);
   if (term) {
     params.push(`%${term}%`);
-    conds.push(`(u.full_name ILIKE $${params.length} OR u.login ILIKE $${params.length})`);
+    conds.push(`(u.full_name ILIKE $${params.length} OR u.username ILIKE $${params.length})`);
   }
   if (query.roleType) {
     if (!ROLE_TYPES.includes(query.roleType)) throw new HttpError(400, 'Role turi noto\'g\'ri');
@@ -125,20 +138,22 @@ async function list(actor, query = {}) {
   return { data: rows.map((r) => toDto(r, actor)), total, page, limit, pages: Math.max(1, Math.ceil(total / limit)) };
 }
 
+/** POST /api/users { username, fullName, roleId, password? } -> { user, temporaryPassword? } */
 async function create(actor, body) {
   const data = readBody(body, { partial: false });
-  const code = generateCode();
-  const codeHash = await hashCode(code);
+  const temp = temporaryPassword(body && body.password, data.username);
+  const passwordHash = await hashPassword(temp.password);
 
   return db.withTransaction(async (client) => {
     const role = await getRole(client, data.roleId);
     assertCanManage(actor, role.type);
     const { rows } = await client.query(
-      `INSERT INTO users (full_name, login, code_hash, role_id, is_active, created_by)
-       VALUES ($1, $2, $3, $4, TRUE, $5) RETURNING id`,
-      [data.fullName, data.login, codeHash, role.id, actor.id]
+      `INSERT INTO users (full_name, username, password_hash, must_change_password, role_id, is_active, created_by)
+       VALUES ($1, $2, $3, TRUE, $4, TRUE, $5) RETURNING id`,
+      [data.fullName, data.username, passwordHash, role.id, actor.id]
     );
-    return { user: await getById(actor, rows[0].id, client), code };
+    const user = await getById(actor, rows[0].id, client);
+    return temp.generated ? { user, temporaryPassword: temp.password } : { user };
   });
 }
 
@@ -162,7 +177,7 @@ async function update(actor, id, body) {
 
     const sets = [];
     const params = [];
-    const col = { fullName: 'full_name', login: 'login', roleId: 'role_id' };
+    const col = { fullName: 'full_name', username: 'username', roleId: 'role_id' };
     Object.entries(data).forEach(([k, v]) => {
       params.push(v);
       sets.push(`${col[k]} = $${params.length}`);
@@ -201,20 +216,28 @@ async function setStatus(actor, id, body) {
   });
 }
 
-async function regenerateCode(actor, id) {
-  const code = generateCode();
-  const codeHash = await hashCode(code);
+/**
+ * POST /api/users/:id/reset-password { password? } -> { user, temporaryPassword }
+ * O'z parolini bu yo'l bilan tiklab bo'lmaydi — buning uchun /auth/change-password.
+ */
+async function resetPassword(actor, id, body) {
+  if (id === actor.id) {
+    throw new HttpError(403, 'O\'z parolingizni "Parolni o\'zgartirish" sahifasida almashtiring', undefined, 'SELF_PASSWORD_RESET');
+  }
 
   return db.withTransaction(async (client) => {
     const target = await lockTarget(client, id);
-    if (target.id !== actor.id) assertCanManage(actor, target.role_type);
+    assertCanManage(actor, target.role_type);
+    const temp = temporaryPassword(body && body.password, target.username);
     await client.query(
-      `UPDATE users SET code_hash = $1, failed_attempts = 0, locked_until = NULL, updated_at = NOW() WHERE id = $2`,
-      [codeHash, id]
+      `UPDATE users SET password_hash = $1, must_change_password = TRUE, token_version = token_version + 1,
+         failed_attempts = 0, locked_until = NULL, updated_at = NOW()
+       WHERE id = $2`,
+      [await hashPassword(temp.password), id]
     );
     await revokeAllSessions(id, client);
-    return { user: await getById(actor, id, client), code };
+    return { user: await getById(actor, id, client), temporaryPassword: temp.password };
   });
 }
 
-module.exports = { list, create, update, setStatus, regenerateCode, getById };
+module.exports = { list, create, update, setStatus, resetPassword, getById };
