@@ -20,9 +20,12 @@ function errorHandler(err, req, res, next) {
     return res.status(413).json({ error: 'Yuborilgan ma\'lumot hajmi juda katta' });
   }
 
+  // Bazaning ichki tafsilotlari (err.detail: ustun nomlari, qiymatlar) javobga chiqmaydi — faqat logga
+  if (err.detail) console.warn('DB:', err.code, err.detail);
+
   switch (err.code) {
     case '23505': // unique_violation
-      return res.status(409).json({ error: 'Bunday qiymat allaqachon mavjud', details: err.detail });
+      return res.status(409).json({ error: 'Bunday qiymat allaqachon mavjud' });
     case '23001': // restrict_violation (ON DELETE RESTRICT)
     case '23503': // foreign_key_violation
       // Xabar matni bazaning tiliga bog'liq (ru/en), shuning uchun so'rov metodiga qaraymiz
@@ -30,7 +33,6 @@ function errorHandler(err, req, res, next) {
         error: req.method === 'DELETE'
           ? 'Bu yozuvni o\'chirib bo\'lmaydi: unga boshqa jadvallarda bog\'langan yozuvlar bor'
           : 'Tanlangan bog\'langan yozuv mavjud emas',
-        details: err.detail,
       });
     case '23514': // check_violation
       return res.status(400).json({ error: 'Qiymat qoidaga mos emas', details: err.constraint });
