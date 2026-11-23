@@ -19,9 +19,10 @@ export function AuthProvider({ children }) {
       setReady(true);
       return;
     }
+    // Faqat 401 da chiqaramiz: tarmoq xatosi yoki server uyg'onayotgani (Render) tokenni o'chirmasin
     api.me()
       .then(setUser)
-      .catch(() => logout())
+      .catch((e) => { if (e.status === 401) logout(); })
       .finally(() => setReady(true));
   }, [logout]);
 
