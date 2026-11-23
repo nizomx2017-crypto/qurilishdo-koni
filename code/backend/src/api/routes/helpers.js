@@ -2,7 +2,7 @@
 const HttpError = require('../../utils/httpError');
 
 // async xatolarni error middleware'ga uzatish
-const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+const wrap = require('../middleware/asyncHandler');
 
 // URL'dagi :id ni tekshirish (PostgreSQL INT chegarasi ichida musbat butun son)
 const idOf = (req, param = 'id') => {

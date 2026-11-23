@@ -3,6 +3,7 @@
  * ------------------------------------------------------------
  * Admin oddiy CRUD bilan boshqaradigan jadvallar shu yerda bir marta tasvirlanadi:
  *   - table    : bazadagi jadval nomi
+ *   - page     : pages.code — access kodlari shundan olinadi (PRODUCT_VIEW, PRODUCT_CREATE, ...)
  *   - label    : admin menyusida ko'rinadigan nom
  *   - display  : boshqa jadvallarda (select ichida) ko'rinadigan ustun
  *   - columns  : ustunlar ro'yxati
@@ -27,6 +28,7 @@ const STATUS = {
 const resources = {
   products: {
     table: 'products',
+    page: 'PRODUCT',
     label: 'Mahsulotlar',
     display: 'name',
     columns: {
@@ -45,6 +47,7 @@ const resources = {
 
   categories: {
     table: 'categories',
+    page: 'CATEGORY',
     label: 'Kategoriyalar',
     display: 'name',
     columns: {

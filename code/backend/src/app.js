@@ -2,45 +2,35 @@
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
 
 const { corsOrigins, isProduction } = require('./config/env');
 const db = require('./config/db');
+const limits = require('./api/middleware/rateLimits');
 const authRoutes = require('./api/routes/auth.routes');
 const catalogRoutes = require('./api/routes/catalog.routes');
-const cartRoutes = require('./api/routes/cart.routes');
 const ordersRoutes = require('./api/routes/orders.routes');
 const adminRoutes = require('./api/routes/admin.routes');
+const managementRoutes = require('./api/routes/management.routes');
 const { notFound, errorHandler } = require('./api/middleware/errorHandler');
 
 const app = express();
 
-// Render/Vercel kabi proksi ortida haqiqiy IP'ni olish (rate-limit to'g'ri ishlashi uchun)
+// Render proksi ortida haqiqiy IP'ni olish (rate-limit va login_attempts to'g'ri ishlashi uchun)
 app.set('trust proxy', 1);
 app.disable('x-powered-by');
 
+// API faqat JSON qaytaradi. helmet standart sarlavhalari (CSP, nosniff, frameguard...) frontend'ning
+// fetch so'rovlariga xalaqit bermaydi: Cross-Origin-Resource-Policy CORS so'rovlariga ta'sir qilmaydi.
 app.use(helmet());
-// Production'da CORS_ORIGIN bo'sh bo'lsa hech qaysi begona domenga ruxsat yo'q (avval hammaga ochiq edi)
-app.use(cors({ origin: corsOrigins.length ? corsOrigins : !isProduction }));
-app.use(express.json({ limit: '100kb' }));
-
-const limiterMessage = (text) => ({ error: text });
-// Umumiy cheklov: bir IP'dan 15 daqiqada 300 ta so'rov
-app.use('/api', rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 300,
-  standardHeaders: 'draft-7',
-  legacyHeaders: false,
-  message: limiterMessage('So\'rovlar juda ko\'p. Birozdan keyin urinib ko\'ring'),
+// Production'da FRONTEND_URL bo'sh bo'lsa hech qaysi begona domenga ruxsat yo'q
+app.use(cors({
+  origin: corsOrigins.length ? corsOrigins : !isProduction,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  maxAge: 600,
 }));
-// Login/ro'yxatdan o'tish uchun qattiqroq cheklov (parolni taxmin qilishdan himoya)
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 20,
-  standardHeaders: 'draft-7',
-  legacyHeaders: false,
-  message: limiterMessage('Kirish urinishlari juda ko\'p. 15 daqiqadan keyin qayta urinib ko\'ring'),
-});
+app.use(express.json({ limit: '100kb' }));
+app.use('/api', limits.general);
 
 // Server va baza ishlayaptimi — tekshirish uchun (Render health check ham shuni ishlatadi)
 app.get('/api/health', async (req, res, next) => {
@@ -52,13 +42,13 @@ app.get('/api/health', async (req, res, next) => {
   }
 });
 
-app.use('/api/auth/login', authLimiter);
-app.use('/api/auth/register', authLimiter);
-app.use('/api/auth', authRoutes);
+// Ochiq (mijoz): katalog va buyurtma
 app.use('/api', catalogRoutes);
-app.use('/api/cart', cartRoutes);
 app.use('/api/orders', ordersRoutes);
+// Xodimlar paneli
+app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api', managementRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

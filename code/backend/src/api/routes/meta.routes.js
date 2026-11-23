@@ -11,6 +11,7 @@ router.get('/', (req, res) => {
   const meta = Object.entries(resources).map(([key, r]) => ({
     key,
     label: r.label,
+    page: r.page,
     columns: Object.entries(r.columns).map(([name, c]) => ({ name, ...c })),
   }));
   res.json(meta);

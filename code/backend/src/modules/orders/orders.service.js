@@ -1,14 +1,8 @@
 /**
  * BUYURTMALAR
- *  checkout — savatchadan buyurtma yaratish. BITTA TRANZAKSIYADA:
- *     1) savatchadagi mahsulotlar qatorlari qulflanadi (SELECT ... FOR UPDATE),
- *        shunda ikki xaridor bir vaqtda oxirgi donani sotib ololmaydi;
- *     2) har bir mahsulot sotuvda ekani va qoldiq yetarliligi tekshiriladi;
- *     3) orders + order_items yoziladi (nom va narx shu paytdagi holatda saqlanadi);
- *     4) mahsulot qoldig'i kamaytiriladi;
- *     5) savatcha tozalanadi.
- *     Birorta qadam xato bersa — hammasi bekor qilinadi (ROLLBACK).
- *  updateStatus — admin buyurtma holatini o'zgartiradi. Bekor qilinsa, qoldiq qaytariladi.
+ *  checkout     — mijoz (akkauntsiz) buyurtmasi, tranzaksiyada (pastda batafsil).
+ *  listAll      — panel: barcha buyurtmalar.
+ *  updateStatus — panel: holatni o'zgartirish. Bekor qilinsa, qoldiq qaytariladi.
  */
 const db = require('../../config/db');
 const validate = require('../../api/validators/validate');
@@ -26,11 +20,15 @@ const TRANSITIONS = {
 
 const checkoutSchema = {
   columns: {
-    phone:   { label: 'Telefon', type: 'text', required: true, minLength: 7, maxLength: 30 },
-    address: { label: 'Manzil', type: 'text', required: true, minLength: 5, maxLength: 500 },
-    note:    { label: 'Izoh', type: 'text', maxLength: 1000 },
+    customer_name: { label: 'Ism', type: 'text', required: true, minLength: 2, maxLength: 150 },
+    phone:         { label: 'Telefon', type: 'text', required: true, minLength: 7, maxLength: 30 },
+    address:       { label: 'Manzil', type: 'text', required: true, minLength: 5, maxLength: 500 },
+    note:          { label: 'Izoh', type: 'text', maxLength: 1000 },
   },
 };
+const PHONE_RE = /^\+?[\d\s()-]{7,30}$/;
+const MAX_LINES = 50;
+const MAX_QTY = 10000;
 const statusSchema = {
   columns: { status: { label: 'Holat', type: 'select', options: STATUSES, required: true } },
 };
@@ -53,71 +51,102 @@ async function withItems(client, orders) {
   return orders.map((o) => ({ ...o, items: items[o.id] || [] }));
 }
 
-async function checkout(userId, body) {
+/** items: [{ product_id, quantity }] -> bir xil mahsulotlar qo'shiladi, tekshiriladi */
+function readItems(raw) {
+  if (!Array.isArray(raw) || !raw.length) throw new HttpError(400, "Savatcha bo'sh", { items: 'Kamida bitta mahsulot tanlang' });
+  if (raw.length > MAX_LINES) throw new HttpError(400, `Bir buyurtmada ${MAX_LINES} tadan ko'p mahsulot bo'lmasin`);
+  const map = new Map();
+  for (const it of raw) {
+    const id = Number(it && it.product_id);
+    const qty = Number(it && it.quantity);
+    if (!Number.isInteger(id) || id <= 0 || id > 2147483647 || !Number.isInteger(qty) || qty < 1 || qty > MAX_QTY) {
+      throw new HttpError(400, "Savatchadagi mahsulot yoki miqdor noto'g'ri", { items: "Noto'g'ri" });
+    }
+    map.set(id, (map.get(id) || 0) + qty);
+  }
+  for (const qty of map.values()) {
+    if (qty > MAX_QTY) throw new HttpError(400, 'Miqdor juda katta', { items: "Noto'g'ri" });
+  }
+  return map;
+}
+
+/** Ochiq buyurtma formasi uchun maydonlarni tekshiradi (captcha'dan OLDIN — xato bo'lsa captcha yonib ketmasin) */
+function validateCheckout(body) {
   const data = validate(checkoutSchema, body, 'create');
+  if (!PHONE_RE.test(data.phone) || (data.phone.match(/\d/g) || []).length < 7) {
+    throw new HttpError(400, "Ma'lumotlar noto'g'ri to'ldirilgan", { phone: "Telefon raqami noto'g'ri" });
+  }
+  return { ...data, items: readItems(body && body.items) };
+}
+
+/**
+ * Mijoz buyurtmasi (akkauntsiz). BITTA TRANZAKSIYADA:
+ *  1) mahsulot qatorlari qulflanadi (FOR UPDATE) — ikki xaridor oxirgi donani birga ololmaydi;
+ *  2) sotuvdaligi va qoldiq tekshiriladi; narx va nom BAZADAN olinadi (mijoz yuborgan narxga ishonilmaydi);
+ *  3) orders + order_items yoziladi, qoldiq kamaytiriladi.
+ * Javobda faqat mijozga kerakli maydonlar.
+ */
+async function checkout(data) {
+  const ids = [...data.items.keys()].sort((a, b) => a - b);
 
   return db.withTransaction(async (client) => {
-    const { rows: cart } = await client.query(
-      `SELECT ci.quantity, p.id AS product_id, p.name, p.unit, p.price, p.stock_quantity,
+    const { rows: products } = await client.query(
+      `SELECT p.id, p.name, p.unit, p.price, p.stock_quantity,
               (p.status = 'active' AND c.status = 'active') AS available
-       FROM cart_items ci
-       JOIN products p   ON p.id = ci.product_id
-       JOIN categories c ON c.id = p.category_id
-       WHERE ci.user_id = $1
+       FROM products p JOIN categories c ON c.id = p.category_id
+       WHERE p.id = ANY($1::int[])
        ORDER BY p.id
-       FOR UPDATE OF ci, p`,
-      [userId]
+       FOR UPDATE OF p`,
+      [ids]
     );
-    if (!cart.length) throw new HttpError(400, 'Savatcha bo\'sh');
+    const byId = new Map(products.map((p) => [p.id, p]));
 
     const problems = {};
-    for (const it of cart) {
-      if (!it.available) problems[it.product_id] = `"${it.name}" hozir sotuvda emas`;
-      else if (it.quantity > it.stock_quantity) {
-        problems[it.product_id] = `"${it.name}" yetarli emas: mavjud ${it.stock_quantity}, so'ralgan ${it.quantity}`;
-      }
+    for (const id of ids) {
+      const p = byId.get(id);
+      const qty = data.items.get(id);
+      if (!p || !p.available) problems[id] = p ? `"${p.name}" hozir sotuvda emas` : 'Mahsulot topilmadi';
+      else if (qty > p.stock_quantity) problems[id] = `"${p.name}" yetarli emas: mavjud ${p.stock_quantity}, so'ralgan ${qty}`;
     }
     if (Object.keys(problems).length) {
-      throw new HttpError(409, 'Ba\'zi mahsulotlarni buyurtma qilib bo\'lmaydi', problems);
+      throw new HttpError(409, "Ba'zi mahsulotlarni buyurtma qilib bo'lmaydi", problems, 'OUT_OF_STOCK');
     }
 
     // Tiyinlarda hisoblaymiz — kasr sonlar yig'indisida yaxlitlash xatosi chiqmasligi uchun
-    cart.forEach((it) => { it.line_total = Math.round(it.quantity * Number(it.price) * 100) / 100; });
-    const total = Math.round(cart.reduce((sum, it) => sum + it.line_total * 100, 0)) / 100;
+    const lines = ids.map((id) => {
+      const p = byId.get(id);
+      const quantity = data.items.get(id);
+      return { ...p, quantity, line_total: Math.round(quantity * Number(p.price) * 100) / 100 };
+    });
+    const total = Math.round(lines.reduce((sum, l) => sum + l.line_total * 100, 0)) / 100;
+
     const { rows: [order] } = await client.query(
-      `INSERT INTO orders (user_id, total_amount, phone, address, note)
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [userId, total, data.phone, data.address, data.note || null]
+      `INSERT INTO orders (user_id, customer_name, total_amount, phone, address, note)
+       VALUES (NULL, $1, $2, $3, $4, $5)
+       RETURNING id, status, total_amount, created_at`,
+      [data.customer_name, total, data.phone, data.address, data.note || null]
     );
 
-    for (const it of cart) {
+    for (const l of lines) {
       await client.query(
         `INSERT INTO order_items (order_id, product_id, product_name, unit, unit_price, quantity, total_price)
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [order.id, it.product_id, it.name, it.unit, it.price, it.quantity, it.line_total]
+        [order.id, l.id, l.name, l.unit, l.price, l.quantity, l.line_total]
       );
-      await client.query(
-        'UPDATE products SET stock_quantity = stock_quantity - $1 WHERE id = $2',
-        [it.quantity, it.product_id]
-      );
+      await client.query('UPDATE products SET stock_quantity = stock_quantity - $1 WHERE id = $2', [l.quantity, l.id]);
     }
 
-    await client.query('DELETE FROM cart_items WHERE user_id = $1', [userId]);
-    const [full] = await withItems(client, [order]);
-    return full;
+    return {
+      ...order,
+      items: lines.map((l) => ({
+        product_id: l.id, product_name: l.name, unit: l.unit,
+        unit_price: Number(l.price), quantity: l.quantity, total_price: l.line_total,
+      })),
+    };
   });
 }
 
-async function listMine(userId) {
-  const { rows } = await db.query(
-    `SELECT id, total_amount, status, phone, address, note, created_at, updated_at
-     FROM orders WHERE user_id = $1 ORDER BY id DESC`,
-    [userId]
-  );
-  return withItems(db, rows);
-}
-
-/** Admin: barcha buyurtmalar, ?page=&limit=&status=&search= (id, mijoz ismi, email yoki telefon) */
+/** Panel: barcha buyurtmalar, ?page=&limit=&status=&search= (id, mijoz ismi yoki telefon) */
 async function listAll(query = {}) {
   const page = Math.max(1, parseInt(query.page, 10) || 1);
   const limit = Math.min(100, Math.max(1, parseInt(query.limit, 10) || 10));
@@ -133,7 +162,7 @@ async function listAll(query = {}) {
   if (term) {
     params.push(`%${term}%`);
     const p = `$${params.length}`;
-    const or = [`u.full_name ILIKE ${p}`, `u.email ILIKE ${p}`, `o.phone ILIKE ${p}`];
+    const or = [`o.customer_name ILIKE ${p}`, `o.phone ILIKE ${p}`];
     if (/^\d{1,9}$/.test(term)) {
       params.push(parseInt(term, 10));
       or.push(`o.id = $${params.length}`);
@@ -141,12 +170,12 @@ async function listAll(query = {}) {
     conds.push(`(${or.join(' OR ')})`);
   }
   const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
-  const from = 'FROM orders o JOIN users u ON u.id = o.user_id';
+  const from = 'FROM orders o';
 
   const total = (await db.query(`SELECT COUNT(*)::int AS total ${from} ${where}`, params)).rows[0].total;
   params.push(limit, (page - 1) * limit);
   const { rows } = await db.query(
-    `SELECT o.id, o.user_id, u.full_name AS user_name, u.email AS user_email,
+    `SELECT o.id, o.customer_name,
             o.total_amount, o.status, o.phone, o.address, o.note, o.created_at, o.updated_at
      ${from} ${where}
      ORDER BY o.id DESC
@@ -191,4 +220,4 @@ async function updateStatus(orderId, body) {
   });
 }
 
-module.exports = { checkout, listMine, listAll, updateStatus, STATUSES };
+module.exports = { validateCheckout, checkout, listAll, updateStatus, STATUSES };
