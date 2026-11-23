@@ -33,6 +33,12 @@ function connectionConfig(database) {
 
 const pool = new Pool({ ...connectionConfig(), max: Number(process.env.DB_POOL_MAX || 10) });
 
+// Bo'sh turgan ulanish uzilsa (masalan Supabase pooler uni yopsa) pool 'error' chiqaradi.
+// Handler bo'lmasa Node jarayoni yiqiladi — shuning uchun faqat logga yozamiz, pool o'zi yangi ulanish ochadi.
+pool.on('error', (err) => {
+  console.error('PostgreSQL: bo\'sh ulanishda xato:', err.code || '', err.message);
+});
+
 /** Oddiy so'rov */
 function query(text, params) {
   return pool.query(text, params);
@@ -44,16 +50,22 @@ function query(text, params) {
  */
 async function withTransaction(fn) {
   const client = await pool.connect();
+  let broken = false;
   try {
     await client.query('BEGIN');
     const result = await fn(client);
     await client.query('COMMIT');
     return result;
   } catch (err) {
-    await client.query('ROLLBACK');
+    // ROLLBACK ham xato bersa (ulanish uzilgan), asl xatoni yo'qotmaymiz va ulanishni pool'ga qaytarmaymiz
+    try {
+      await client.query('ROLLBACK');
+    } catch {
+      broken = true;
+    }
     throw err;
   } finally {
-    client.release();
+    client.release(broken);
   }
 }
 
