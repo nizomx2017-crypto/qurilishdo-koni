@@ -6,7 +6,9 @@
 
 -- Qayta ishga tushirilsa, eski jadvallarni o'chiradi (faqat o'quv loyiha uchun!).
 -- Ro'yxatda avvalgi ombor versiyasining jadvallari ham bor — eski bazani tozalash uchun.
+-- migrations/ dagi jadvallar ham shu yerda: db:init ularni ham qaytadan yaratadi.
 DROP TABLE IF EXISTS
+  schema_migrations, login_attempts, captchas, refresh_tokens, role_accesses, accesses, pages,
   order_items, orders, cart_items, products, categories, users, roles,
   settings, debts, payments, sale_items, sales, inventory_movements, customers, suppliers
 CASCADE;
