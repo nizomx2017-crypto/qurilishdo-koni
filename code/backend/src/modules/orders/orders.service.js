@@ -134,7 +134,10 @@ async function listAll(query = {}) {
     params.push(`%${term}%`);
     const p = `$${params.length}`;
     const or = [`u.full_name ILIKE ${p}`, `u.email ILIKE ${p}`, `o.phone ILIKE ${p}`];
-    if (/^\d{1,9}$/.test(term)) or.push(`o.id = ${parseInt(term, 10)}`);
+    if (/^\d{1,9}$/.test(term)) {
+      params.push(parseInt(term, 10));
+      or.push(`o.id = $${params.length}`);
+    }
     conds.push(`(${or.join(' OR ')})`);
   }
   const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';

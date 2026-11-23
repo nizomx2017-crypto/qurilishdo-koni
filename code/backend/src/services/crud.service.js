@@ -73,7 +73,10 @@ function buildWhere(resource, { search = '', filters = {}, scope = {}, extraWher
   if (term && searchCols.length) {
     params.push(`%${term}%`);
     const or = searchCols.map((c) => `t.${q(c)}::text ILIKE $${params.length}`);
-    if (/^\d{1,9}$/.test(term)) or.push(`t."id" = ${parseInt(term, 10)}`);
+    if (/^\d{1,9}$/.test(term)) {
+      params.push(parseInt(term, 10));
+      or.push(`t."id" = $${params.length}`);
+    }
     conds.push(`(${or.join(' OR ')})`);
   }
 
