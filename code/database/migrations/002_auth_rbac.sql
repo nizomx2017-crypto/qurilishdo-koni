@@ -15,6 +15,16 @@
 
 BEGIN;
 
+-- 003 (username + parol) qo'llangan bazada bu faylni qayta bajarish xodimlarni nofaol qilib qo'yardi —
+-- shuning uchun bunday holatda hech narsa o'zgartirmasdan to'xtaymiz.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_schema = current_schema() AND table_name = 'users' AND column_name = 'username') THEN
+    RAISE EXCEPTION '002_auth_rbac allaqachon qo''llangan (003 ham). Bu faylni qayta bajarmang.';
+  END IF;
+END $$;
+
 -- ------------------------------------------------------------- roles
 ALTER TABLE roles DROP CONSTRAINT IF EXISTS roles_name_check;
 ALTER TABLE roles ALTER COLUMN name TYPE VARCHAR(50);
