@@ -17,7 +17,7 @@ async function authenticate(req, res, next) {
 
     let payload;
     try {
-      payload = jwt.verify(token, jwtSecret);
+      payload = jwt.verify(token, jwtSecret, { algorithms: ['HS256'] });
     } catch {
       throw new HttpError(401, 'Sessiya muddati tugagan yoki token noto\'g\'ri. Qaytadan kiring');
     }
