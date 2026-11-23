@@ -4,8 +4,8 @@
  *     /                   katalog
  *     /mahsulot/:id       mahsulot sahifasi
  *     /savatcha           savatcha va buyurtma (ism, telefon, manzil shu yerda)
- *   Xodimlar paneli — /panel/* (login + kod), PanelLayout:
- *     /panel/login, /panel/buyurtmalar, /panel/mahsulotlar, /panel/kategoriyalar  — access bo'yicha
+ *   Xodimlar paneli — /panel/* (username + parol), PanelLayout:
+ *     /panel/login, /panel/change-password (vaqtinchalik parolda majburiy), /panel/buyurtmalar, /panel/mahsulotlar, /panel/kategoriyalar  — access bo'yicha
  *     /panel/users, /panel/roles  — ADMIN, DIRECTOR;  /panel/login-attempts — ADMIN
  * Sessiya tugasa faqat /panel/* sahifalari loginga qaytadi; ochiq sahifalar ishlashda davom etadi.
  */
@@ -18,6 +18,7 @@ import ProductPage from './pages/ProductPage';
 import CartPage from './pages/CartPage';
 import NotFoundPage from './pages/NotFoundPage';
 import PanelLoginPage from './pages/panel/LoginPage';
+import ChangePasswordPage from './pages/panel/ChangePasswordPage';
 import PanelHome from './pages/panel/PanelHome';
 import UsersPage from './pages/panel/UsersPage';
 import RolesPage from './pages/panel/RolesPage';
@@ -43,6 +44,7 @@ export default function App() {
       </Route>
 
       <Route path="/panel/login" element={<main className="page"><PanelLoginPage /></main>} />
+      <Route path="/panel/change-password" element={<main className="page"><ChangePasswordPage /></main>} />
       <Route path="/panel" element={<ProtectedRoute><PanelLayout /></ProtectedRoute>}>
         <Route index element={<PanelHome />} />
         <Route path="buyurtmalar" element={<ProtectedRoute access="ORDER_VIEW"><AdminOrdersPage /></ProtectedRoute>} />

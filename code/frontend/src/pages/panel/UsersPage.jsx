@@ -1,44 +1,60 @@
 /**
- * Xodimlar (ADMIN, DIRECTOR): ro'yxat, qidiruv, yaratish, tahrirlash, bloklash/faollashtirish, kodni yangilash.
- * Yangi kod modal oynada BIR MARTA ko'rsatiladi. DIRECTOR role tanlovida faqat MANAGER rollari
- * (server "manageable" belgisini o'zi hisoblaydi va har amalda yana tekshiradi).
+ * Xodimlar (ADMIN, DIRECTOR): ro'yxat, qidiruv, yaratish, tahrirlash, bloklash/faollashtirish, parolni tiklash.
+ *  - yaratishda vaqtinchalik parol kiritiladi yoki "Generatsiya" (12 belgi); xodim birinchi kirishda uni almashtiradi;
+ *  - vaqtinchalik parol saqlangandan keyin modal oynada BIR MARTA ko'rsatiladi ("Nusxa olish" bilan);
+ *  - DIRECTOR role tanlovida faqat MANAGER rollari (server "manageable" ni o'zi hisoblaydi va har amalda tekshiradi).
  */
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../../services/api';
 import { useToast } from '../../context/ToastContext';
 import { formatDate } from '../../utils/format';
+import { generatePassword, passwordChecks } from '../../utils/password';
 import Modal from '../../components/modals/Modal';
 import ConfirmDialog from '../../components/modals/ConfirmDialog';
-import CodeModal from '../../components/modals/CodeModal';
+import TempPasswordModal from '../../components/modals/TempPasswordModal';
+import PasswordInput, { PasswordChecklist } from '../../components/forms/PasswordInput';
 import Pagination from '../../components/tables/Pagination';
 
 const TYPE_LABEL = { ADMIN: 'Administrator', DIRECTOR: 'Direktor', MANAGER: 'Menejer' };
 const TYPE_TONE = { ADMIN: 'bad', DIRECTOR: 'warn', MANAGER: 'info' };
+const USERNAME_PATTERN = '[a-zA-Z0-9_.]{3,32}';
 
 function UserForm({ user, roles, onClose, onSaved }) {
   const isEdit = Boolean(user);
   const choices = roles.filter((r) => r.manageable);
   const [values, setValues] = useState({
     fullName: user?.fullName || '',
-    login: user?.login || '',
+    username: user?.username || '',
     roleId: String(user?.role.id || choices.find((r) => r.type === 'MANAGER')?.id || ''),
+    password: '',
   });
   const [errors, setErrors] = useState({});
   const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
-  const set = (k) => (e) => setValues((v) => ({ ...v, [k]: e.target.value }));
+  const set = (k) => (e) => {
+    setValues((v) => ({ ...v, [k]: e.target.value }));
+    setErrors((er) => ({ ...er, [k]: undefined }));
+  };
+  const checks = passwordChecks(values.password, values.username.trim().toLowerCase());
+  const passwordOk = isEdit || checks.every((c) => c.ok);
 
   async function submit(e) {
     e.preventDefault();
-    if (saving) return;
+    if (saving || !passwordOk) return;
     setSaving(true);
     setMessage('');
     setErrors({});
-    const payload = { fullName: values.fullName, login: values.login, roleId: Number(values.roleId) };
+    const payload = { fullName: values.fullName, username: values.username.trim().toLowerCase(), roleId: Number(values.roleId) };
     if (isEdit && user.isSelf) delete payload.roleId;
+    if (!isEdit) payload.password = values.password;
     try {
-      const res = isEdit ? await api.users.update(user.id, payload) : await api.users.create(payload);
-      onSaved(res, isEdit);
+      if (isEdit) {
+        onSaved({ user: await api.users.update(user.id, payload) }, true);
+      } else {
+        const res = await api.users.create(payload);
+        onSaved({ user: res.user, temporaryPassword: res.temporaryPassword || values.password }, false);
+      }
     } catch (err) {
       setMessage(err.message);
       if (err.details && typeof err.details === 'object') setErrors(err.details);
@@ -48,7 +64,7 @@ function UserForm({ user, roles, onClose, onSaved }) {
   }
 
   return (
-    <Modal title={isEdit ? `Xodim: ${user.fullName}` : 'Yangi xodim'} onClose={onClose} width={480}>
+    <Modal title={isEdit ? `Xodim: ${user.fullName}` : 'Yangi xodim'} onClose={onClose} width={500}>
       <form onSubmit={submit}>
         <div className="modal-body stack">
           <label className={`field ${errors.fullName ? 'has-error' : ''}`}>
@@ -56,11 +72,12 @@ function UserForm({ user, roles, onClose, onSaved }) {
             <input value={values.fullName} onChange={set('fullName')} required minLength={2} maxLength={150} />
             {errors.fullName && <small>{errors.fullName}</small>}
           </label>
-          <label className={`field ${errors.login ? 'has-error' : ''}`}>
-            <span>Login<i className="req">*</i></span>
-            <input value={values.login} onChange={set('login')} required pattern="[a-zA-Z0-9._\-]{3,50}"
-              title="3–50 belgi: lotin harflari, raqam, . _ -" autoCapitalize="off" spellCheck={false} />
-            {errors.login && <small>{errors.login}</small>}
+          <label className={`field ${errors.username ? 'has-error' : ''}`}>
+            <span>Username<i className="req">*</i></span>
+            <input value={values.username} onChange={set('username')} required pattern={USERNAME_PATTERN}
+              title="3–32 belgi: a-z, 0-9, _ va ." autoCapitalize="off" spellCheck={false} autoComplete="off" />
+            <small className="dim">3–32 belgi: a-z, 0-9, _ va . (katta harflar kichikka o‘tkaziladi)</small>
+            {errors.username && <small>{errors.username}</small>}
           </label>
           <label className={`field ${errors.roleId ? 'has-error' : ''}`}>
             <span>Role<i className="req">*</i></span>
@@ -73,12 +90,24 @@ function UserForm({ user, roles, onClose, onSaved }) {
             {isEdit && user.isSelf && <small className="dim">O‘z role‘ingizni o‘zgartira olmaysiz</small>}
             {errors.roleId && <small>{errors.roleId}</small>}
           </label>
-          {!isEdit && <p className="dim small-text">Kirish kodi avtomatik yaratiladi va saqlangandan keyin bir marta ko‘rsatiladi.</p>}
+          {!isEdit && (
+            <div className={`field ${errors.password ? 'has-error' : ''}`}>
+              <span>Vaqtinchalik parol<i className="req">*</i></span>
+              <div className="row-gap">
+                <PasswordInput value={values.password} onChange={set('password')} autoComplete="new-password" maxLength={128} required />
+                <button type="button" className="btn ghost small"
+                  onClick={() => setValues((v) => ({ ...v, password: generatePassword() }))}>Generatsiya</button>
+              </div>
+              <PasswordChecklist checks={checks} />
+              <small className="dim">Xodim birinchi kirishda o‘z parolini o‘rnatadi.</small>
+              {errors.password && <small>{errors.password}</small>}
+            </div>
+          )}
         </div>
         {message && <div className="form-error">{message}</div>}
         <div className="modal-foot">
           <button type="button" className="btn ghost" onClick={onClose}>Bekor qilish</button>
-          <button type="submit" className="btn primary" disabled={saving}>{saving ? 'Saqlanmoqda…' : 'Saqlash'}</button>
+          <button type="submit" className="btn primary" disabled={saving || !passwordOk}>{saving ? 'Saqlanmoqda…' : 'Saqlash'}</button>
         </div>
       </form>
     </Modal>
@@ -88,6 +117,7 @@ function UserForm({ user, roles, onClose, onSaved }) {
 function statusBadge(u) {
   if (!u.isActive) return <span className="badge tone-muted">Bloklangan</span>;
   if (u.lockedUntil) return <span className="badge tone-warn" title={`${formatDate(u.lockedUntil)} gacha`}>Qulflangan</span>;
+  if (u.mustChangePassword) return <span className="badge tone-info" title="Vaqtinchalik parol — birinchi kirishda almashtiradi">Faol · vaqtinchalik parol</span>;
   return <span className="badge tone-ok">Faol</span>;
 }
 
@@ -100,8 +130,8 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [editing, setEditing] = useState(null);   // null | 'new' | user
-  const [confirm, setConfirm] = useState(null);   // { kind: 'status' | 'code', user }
-  const [shownCode, setShownCode] = useState(null); // { user, code }
+  const [confirm, setConfirm] = useState(null);   // { kind: 'status' | 'reset', user }
+  const [shown, setShown] = useState(null);       // { user, password } — bir marta
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -123,10 +153,10 @@ export default function UsersPage() {
     return () => clearTimeout(t);
   }, [searchText]);
 
-  const onSaved = (res, isEdit) => {
+  const onSaved = ({ user, temporaryPassword }, isEdit) => {
     setEditing(null);
-    if (isEdit) notify(`${res.fullName} saqlandi`);
-    else setShownCode({ user: res.user, code: res.code });
+    if (isEdit) notify(`${user.fullName} saqlandi`);
+    else setShown({ user, password: temporaryPassword });
     load();
   };
 
@@ -138,8 +168,8 @@ export default function UsersPage() {
         await api.users.setStatus(user.id, !user.isActive);
         notify(user.isActive ? `${user.fullName} bloklandi` : `${user.fullName} faollashtirildi`);
       } else {
-        const res = await api.users.regenerateCode(user.id);
-        setShownCode({ user: res.user, code: res.code });
+        const res = await api.users.resetPassword(user.id);
+        setShown({ user: res.user, password: res.temporaryPassword });
       }
       load();
     } catch (e) {
@@ -155,7 +185,7 @@ export default function UsersPage() {
       <div className="topbar">
         <h1>Xodimlar</h1>
         <div className="toolbar">
-          <input className="search" type="search" placeholder="Ism yoki login…" value={searchText}
+          <input className="search" type="search" placeholder="Ism yoki username…" value={searchText}
             onChange={(e) => setSearchText(e.target.value)} aria-label="Qidiruv" />
           <select value={query.isActive} onChange={(e) => setQuery((q) => ({ ...q, isActive: e.target.value, page: 1 }))} aria-label="Holat">
             <option value="">Barchasi</option>
@@ -171,13 +201,13 @@ export default function UsersPage() {
         <div className={`table-wrap ${loading ? 'is-loading' : ''}`}>
           <table>
             <thead>
-              <tr><th>F.I.Sh.</th><th>Login</th><th>Role</th><th>Holat</th><th>Yaratgan</th><th>Yaratilgan</th><th className="right actions-col">Amallar</th></tr>
+              <tr><th>F.I.Sh.</th><th>Username</th><th>Role</th><th>Holat</th><th>Yaratgan</th><th>Yaratilgan</th><th className="right actions-col">Amallar</th></tr>
             </thead>
             <tbody>
               {result.data.map((u) => (
                 <tr key={u.id}>
                   <td>{u.fullName}{u.isSelf && <span className="dim"> (siz)</span>}</td>
-                  <td><code>{u.login}</code></td>
+                  <td><code>{u.username}</code></td>
                   <td><span className={`badge tone-${TYPE_TONE[u.role.type]}`}>{u.role.name}</span></td>
                   <td>{statusBadge(u)}</td>
                   <td className="dim">{u.createdBy || '—'}</td>
@@ -189,9 +219,10 @@ export default function UsersPage() {
                         {u.isActive ? 'Bloklash' : 'Faollashtirish'}
                       </button>
                     )}
-                    {(u.manageable || u.isSelf) && (
-                      <button className="btn ghost small" onClick={() => setConfirm({ kind: 'code', user: u })}>Kodni yangilash</button>
+                    {u.manageable && !u.isSelf && (
+                      <button className="btn ghost small" onClick={() => setConfirm({ kind: 'reset', user: u })}>Parolni tiklash</button>
                     )}
+                    {u.isSelf && <Link className="btn ghost small" to="/panel/change-password">Parolni o‘zgartirish</Link>}
                   </td>
                 </tr>
               ))}
@@ -211,10 +242,10 @@ export default function UsersPage() {
 
       {confirm && (
         <ConfirmDialog
-          title={confirm.kind === 'code' ? 'Kodni yangilash' : (confirm.user.isActive ? 'Xodimni bloklash' : 'Xodimni faollashtirish')}
-          confirmText={confirm.kind === 'code' ? 'Ha, yangilash' : (confirm.user.isActive ? 'Ha, bloklash' : 'Ha, faollashtirish')}
-          text={confirm.kind === 'code'
-            ? `${confirm.user.fullName} uchun yangi kod yaratiladi. Eski kod darhol ishlamay qoladi va barcha sessiyalari yopiladi.`
+          title={confirm.kind === 'reset' ? 'Parolni tiklash' : (confirm.user.isActive ? 'Xodimni bloklash' : 'Xodimni faollashtirish')}
+          confirmText={confirm.kind === 'reset' ? 'Ha, tiklash' : (confirm.user.isActive ? 'Ha, bloklash' : 'Ha, faollashtirish')}
+          text={confirm.kind === 'reset'
+            ? `${confirm.user.fullName} uchun yangi vaqtinchalik parol yaratiladi. Eski parol darhol ishlamay qoladi va barcha sessiyalari yopiladi.`
             : confirm.user.isActive
               ? `${confirm.user.fullName} panelga kira olmaydi, ochiq sessiyalari darhol yopiladi.`
               : `${confirm.user.fullName} yana panelga kira oladi (qulf ham olinadi).`}
@@ -224,7 +255,7 @@ export default function UsersPage() {
         />
       )}
 
-      {shownCode && <CodeModal user={shownCode.user} code={shownCode.code} onClose={() => setShownCode(null)} />}
+      {shown && <TempPasswordModal user={shown.user} password={shown.password} onClose={() => setShown(null)} />}
     </>
   );
 }

@@ -135,6 +135,7 @@ export const api = {
     if (refreshToken) await send('POST', '/auth/logout', { refreshToken }).catch(() => {});
   },
   me: () => authed('GET', '/auth/me'),
+  changePassword: (data) => authed('POST', '/auth/change-password', data),
 
   // Mijoz: katalog va buyurtma (akkauntsiz)
   categories: () => send('GET', '/categories'),
@@ -160,7 +161,7 @@ export const api = {
     create: (data) => authed('POST', '/users', data),
     update: (id, data) => authed('PATCH', `/users/${id}`, data),
     setStatus: (id, isActive) => authed('PATCH', `/users/${id}/status`, { isActive }),
-    regenerateCode: (id) => authed('POST', `/users/${id}/regenerate-code`),
+    resetPassword: (id, password) => authed('POST', `/users/${id}/reset-password`, password ? { password } : {}),
   },
   roles: {
     list: () => authed('GET', '/roles'),

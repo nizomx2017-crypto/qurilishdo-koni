@@ -6,8 +6,9 @@ import Pagination from '../../components/tables/Pagination';
 
 const REASON_LABEL = {
   SUCCESS: 'Muvaffaqiyatli',
-  WRONG_CODE: 'Noto‘g‘ri kod',
-  NO_USER: 'Bunday login yo‘q',
+  WRONG_PASSWORD: 'Noto‘g‘ri parol',
+  WRONG_CODE: 'Noto‘g‘ri kod (eski)',
+  NO_USER: 'Bunday username yo‘q',
   INACTIVE: 'Bloklangan akkaunt',
   LOCKED: 'Qulflangan',
   CAPTCHA_REQUIRED: 'Captcha kiritilmagan',
@@ -15,8 +16,8 @@ const REASON_LABEL = {
 };
 
 export default function LoginAttemptsPage() {
-  const [query, setQuery] = useState({ page: 1, limit: 20, login: '', ip: '', success: '', reason: '' });
-  const [text, setText] = useState({ login: '', ip: '' });
+  const [query, setQuery] = useState({ page: 1, limit: 20, username: '', ip: '', success: '', reason: '' });
+  const [text, setText] = useState({ username: '', ip: '' });
   const [result, setResult] = useState({ data: [], total: 0, pages: 1 });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -35,7 +36,7 @@ export default function LoginAttemptsPage() {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
-    const t = setTimeout(() => setQuery((q) => (q.login === text.login && q.ip === text.ip ? q : { ...q, ...text, page: 1 })), 400);
+    const t = setTimeout(() => setQuery((q) => (q.username === text.username && q.ip === text.ip ? q : { ...q, ...text, page: 1 })), 400);
     return () => clearTimeout(t);
   }, [text]);
 
@@ -46,8 +47,8 @@ export default function LoginAttemptsPage() {
       <div className="topbar">
         <h1>Kirish urinishlari</h1>
         <div className="toolbar">
-          <input className="search" type="search" placeholder="Login…" value={text.login}
-            onChange={(e) => setText((t) => ({ ...t, login: e.target.value }))} aria-label="Login" />
+          <input className="search" type="search" placeholder="Username…" value={text.username}
+            onChange={(e) => setText((t) => ({ ...t, username: e.target.value }))} aria-label="Username" />
           <input className="search narrow" type="search" placeholder="IP…" value={text.ip}
             onChange={(e) => setText((t) => ({ ...t, ip: e.target.value }))} aria-label="IP" />
           <select value={query.success} onChange={setFilter('success')} aria-label="Natija">
@@ -66,12 +67,12 @@ export default function LoginAttemptsPage() {
         {error && <div className="alert">{error}</div>}
         <div className={`table-wrap ${loading ? 'is-loading' : ''}`}>
           <table>
-            <thead><tr><th>Vaqt</th><th>Login</th><th>IP</th><th>Natija</th><th>Sabab</th></tr></thead>
+            <thead><tr><th>Vaqt</th><th>Username</th><th>IP</th><th>Natija</th><th>Sabab</th></tr></thead>
             <tbody>
               {result.data.map((r) => (
                 <tr key={r.id}>
                   <td className="dim">{formatDate(r.createdAt)}</td>
-                  <td><code>{r.login}</code></td>
+                  <td><code>{r.username}</code></td>
                   <td className="dim">{r.ip || '—'}</td>
                   <td><span className={`badge tone-${r.success ? 'ok' : 'bad'}`}>{r.success ? 'Kirdi' : 'Rad etildi'}</span></td>
                   <td>{REASON_LABEL[r.reason] || r.reason}</td>

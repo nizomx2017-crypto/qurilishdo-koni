@@ -1,6 +1,6 @@
 /**
  * Xodimlar paneli: chapda menyu (faqat VIEW huquqi bor bo'limlar), yuqorida xodim ismi, role,
- * "Saytga qaytish" va "Chiqish".
+ * "Parolni o'zgartirish", "Saytga qaytish" va "Chiqish".
  */
 import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
@@ -59,6 +59,7 @@ export default function PanelLayout() {
             <b>{auth.user.fullName}</b>
             <span className="dim">{auth.user.role.name} · {ROLE_TYPE_LABEL[auth.user.role.type]}</span>
           </div>
+          <Link to="/panel/change-password" className="btn ghost small">Parolni o‘zgartirish</Link>
           <Link to="/" className="btn ghost small">Saytga qaytish</Link>
           <button className="btn ghost small" onClick={onLogout}>Chiqish</button>
         </header>
