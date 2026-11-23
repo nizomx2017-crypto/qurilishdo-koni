@@ -4,7 +4,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 
-const { corsOrigins } = require('./config/env');
+const { corsOrigins, isProduction } = require('./config/env');
 const db = require('./config/db');
 const authRoutes = require('./api/routes/auth.routes');
 const catalogRoutes = require('./api/routes/catalog.routes');
@@ -20,7 +20,8 @@ app.set('trust proxy', 1);
 app.disable('x-powered-by');
 
 app.use(helmet());
-app.use(cors({ origin: corsOrigins.length ? corsOrigins : true }));
+// Production'da CORS_ORIGIN bo'sh bo'lsa hech qaysi begona domenga ruxsat yo'q (avval hammaga ochiq edi)
+app.use(cors({ origin: corsOrigins.length ? corsOrigins : !isProduction }));
 app.use(express.json({ limit: '100kb' }));
 
 const limiterMessage = (text) => ({ error: text });
