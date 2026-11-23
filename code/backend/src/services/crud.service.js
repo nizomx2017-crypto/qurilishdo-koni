@@ -4,11 +4,8 @@
  * Barcha jadvallar uchun bitta kod: ro'yxat (pagination + qidiruv), bitta yozuv,
  * qo'shish, tahrirlash, o'chirish.
  *
- * Har bir modulning o'ziga xos BIZNES MANTIG'I esa alohida faylda (hooks):
- *   src/modules/<modul>/<modul>.service.js
- * Masalan: ombor harakati qo'shilsa — mahsulot qoldig'i o'zgaradi.
- * Shu ajratish tufayli keyinchalik har bir modulni alohida microservice'ga
- * ko'chirish oson bo'ladi.
+ * Admin kategoriya/mahsulot CRUD'i va ommaviy katalog shu service orqali ishlaydi.
+ * Modulning o'ziga xos BIZNES MANTIG'I alohida faylda yoziladi va modules/hooks.js orqali ulanadi.
  */
 const db = require('../config/db');
 const validate = require('../api/validators/validate');
@@ -57,26 +54,70 @@ function mustGet(name) {
 
 // ---------------------------------------------------------------- READ
 
-async function list(name, { page = 1, limit = 10, search = '', sort = 'id', order = 'desc' } = {}) {
+/**
+ * WHERE qismini quradi.
+ *  - search     : searchable ustunlar bo'yicha ILIKE (raqam bo'lsa id bo'yicha ham)
+ *  - filters    : so'rovdan kelgan ?ustun=qiymat (faqat filterable ustunlar)
+ *  - scope      : kod ichidan majburiy shartlar, masalan { status: 'active' }
+ *  - extraWhere : kod ichidagi qo'shimcha SQL shart (foydalanuvchi kiritmasi bu yerga KIRMAYDI)
+ */
+function buildWhere(resource, { search = '', filters = {}, scope = {}, extraWhere } = {}, params = []) {
+  const conds = [];
+  const addEq = (col, value) => {
+    params.push(value);
+    conds.push(`t.${q(col)} = $${params.length}`);
+  };
+
+  const searchCols = Object.entries(resource.columns).filter(([, c]) => c.searchable).map(([n]) => n);
+  const term = String(search || '').trim().slice(0, 100);
+  if (term && searchCols.length) {
+    params.push(`%${term}%`);
+    const or = searchCols.map((c) => `t.${q(c)}::text ILIKE $${params.length}`);
+    if (/^\d{1,9}$/.test(term)) {
+      params.push(parseInt(term, 10));
+      or.push(`t."id" = $${params.length}`);
+    }
+    conds.push(`(${or.join(' OR ')})`);
+  }
+
+  for (const [name, col] of Object.entries(resource.columns)) {
+    const v = filters[name];
+    if (!col.filterable || v === undefined || v === '') continue;
+    const bad = () => new HttpError(400, `"${col.label}" filtri noto'g'ri`);
+    if (col.type === 'ref') {
+      const n = Number(v);
+      if (!Number.isInteger(n) || n <= 0 || n > 2147483647) throw bad();
+      addEq(name, n);
+    } else if (col.type === 'select') {
+      if (!col.options.includes(v)) throw bad();
+      addEq(name, v);
+    } else {
+      addEq(name, String(v));
+    }
+  }
+
+  Object.entries(scope || {}).forEach(([col, value]) => addEq(col, value));
+  if (extraWhere) conds.push(`(${extraWhere})`);
+
+  return { where: conds.length ? `WHERE ${conds.join(' AND ')}` : '', params };
+}
+
+/**
+ * Ro'yxat: ?page=1&limit=10&search=&sort=id&order=desc&<filterable ustun>=qiymat
+ * opts.scope / opts.extraWhere — kod ichidan qo'shiladigan majburiy shartlar.
+ */
+async function list(name, query = {}, { scope, extraWhere } = {}) {
   const resource = mustGet(name);
-  page = Math.max(1, parseInt(page, 10) || 1);
-  limit = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
+  const { sort = 'id', order = 'desc', search = '', ...filters } = query;
+  const page = Math.max(1, parseInt(query.page, 10) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(query.limit, 10) || 10));
 
   // Tartiblash faqat mavjud ustunlar bo'yicha (aks holda id)
   const sortCol = sort === 'id' || realColumns(resource).includes(sort) ? sort : 'id';
   const sortDir = String(order).toLowerCase() === 'asc' ? 'ASC' : 'DESC';
 
   const { from, fields } = buildSelect(resource);
-  const params = [];
-  let where = '';
-
-  const searchCols = Object.entries(resource.columns).filter(([, c]) => c.searchable).map(([n]) => n);
-  if (search && searchCols.length) {
-    params.push(`%${search}%`);
-    const conds = searchCols.map((c) => `t.${q(c)}::text ILIKE $1`);
-    if (/^\d{1,9}$/.test(search)) conds.push(`t."id" = ${parseInt(search, 10)}`);
-    where = `WHERE ${conds.join(' OR ')}`;
-  }
+  const { where, params } = buildWhere(resource, { search, filters, scope, extraWhere });
 
   const countRes = await db.query(`SELECT COUNT(*)::int AS total FROM ${from} ${where}`, params);
   const total = countRes.rows[0].total;
@@ -92,10 +133,13 @@ async function list(name, { page = 1, limit = 10, search = '', sort = 'id', orde
   return { data: dataRes.rows, total, page, limit, pages: Math.max(1, Math.ceil(total / limit)) };
 }
 
-async function getById(name, id, client = db) {
+/** Bitta yozuv. opts.scope / opts.extraWhere — list() dagi kabi qo'shimcha shartlar. */
+async function getById(name, id, client = db, { scope, extraWhere } = {}) {
   const resource = mustGet(name);
   const { from, fields } = buildSelect(resource);
-  const res = await client.query(`SELECT ${fields} FROM ${from} WHERE t."id" = $1`, [id]);
+  const { where, params } = buildWhere(resource, { scope, extraWhere }, [id]);
+  const cond = where ? `${where} AND t."id" = $1` : 'WHERE t."id" = $1';
+  const res = await client.query(`SELECT ${fields} FROM ${from} ${cond}`, params);
   if (!res.rows[0]) throw new HttpError(404, 'Yozuv topilmadi');
   return res.rows[0];
 }

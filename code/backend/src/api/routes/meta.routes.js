@@ -1,6 +1,6 @@
 /**
- * GET /api/meta — frontend uchun barcha bo'limlar tavsifi.
- * Frontend shu ma'lumotdan chap menyuni, jadval ustunlarini va formalarni quradi.
+ * GET /api/admin/meta — admin panel uchun resurslar tavsifi.
+ * Frontend shu ma'lumotdan jadval ustunlarini va qo'shish/tahrirlash formalarini quradi.
  */
 const express = require('express');
 const { resources } = require('../../modules/registry');
@@ -11,7 +11,7 @@ router.get('/', (req, res) => {
   const meta = Object.entries(resources).map(([key, r]) => ({
     key,
     label: r.label,
-    group: r.group,
+    page: r.page,
     columns: Object.entries(r.columns).map(([name, c]) => ({ name, ...c })),
   }));
   res.json(meta);
