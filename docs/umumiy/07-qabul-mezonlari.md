@@ -2,7 +2,8 @@
 
 Bu hujjat MVP tayyor deb hisoblanishi uchun minimal natijalarni belgilaydi.
 
-- User ro‘yxatdan o‘tishi va login qilishi mumkin.
 - Kategoriya va mahsulotlar ko‘rinadi, mahsulot qidiriladi.
-- User savatchani boshqarib, buyurtma beradi va o‘z buyurtmalarini ko‘radi.
-- Admin kategoriya va mahsulotlarni boshqaradi, barcha buyurtmalarni ko‘radi.
+- Mijoz ro‘yxatdan o‘tmasdan savatchani boshqaradi va buyurtma beradi.
+- Xodim login + kod bilan panelga kiradi; huquqi bo‘lmagan bo‘lim va tugmalar ko‘rinmaydi, API esa `403` qaytaradi.
+- Administrator va Direktor xodimlar, rollar va huquqlarni boshqaradi.
+- Xavfsizlik bo‘yicha avtomatik testlar (`npm test`) o‘tadi.

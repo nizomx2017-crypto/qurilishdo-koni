@@ -2,29 +2,31 @@
 
 Qurilish va sanoat materiallari uchun o‘quv internet-do‘kon (MVP).
 
-Foydalanuvchi katalogdan mahsulot topadi, savatchaga qo‘shadi va buyurtma beradi.
-Admin kategoriya va mahsulotlarni boshqaradi, barcha buyurtmalarni ko‘radi va ularning holatini o‘zgartiradi.
+Mijoz **ro‘yxatdan o‘tmaydi**: katalogdan mahsulot topadi, savatchaga qo‘shadi va buyurtma berayotganda ismi, telefoni va manzilini kiritadi.
+Xodimlar alohida **panelda** (`/panel`, login + kod) o‘z huquqlari doirasida buyurtma, mahsulot va kategoriyalarni boshqaradi.
 Talablar: [docs/umumiy/](docs/umumiy/).
 
 ## Imkoniyatlar
 
-| Kim   | Nima qila oladi |
-|-------|-----------------|
-| Mehmon | Katalogni ko‘rish, kategoriya bo‘yicha filtr, nom bo‘yicha qidiruv, mahsulot sahifasi |
-| User  | Ro‘yxatdan o‘tish va login, savatcha (qo‘shish, miqdorni o‘zgartirish, olib tashlash), buyurtma berish, o‘z buyurtmalarini ko‘rish |
-| Admin | User huquqlari + kategoriya va mahsulot CRUD, barcha buyurtmalar ro‘yxati, buyurtma holatini o‘zgartirish |
+| Kim | Nima qila oladi |
+|-----|-----------------|
+| Mijoz (akkauntsiz) | Katalog, kategoriya filtri, qidiruv, mahsulot sahifasi, savatcha (brauzerda), buyurtma berish (captcha bilan) |
+| Menejer | Faqat role’iga berilgan huquqlar: buyurtmalar, mahsulotlar, kategoriyalar (ko‘rish / qo‘shish / tahrirlash / o‘chirish / arxivlash / tasdiqlash) |
+| Direktor | Barcha bo‘limlar + menejerlar va ularning huquqlarini boshqarish |
+| Administrator | Hammasi + barcha turdagi xodim va role’lar, kirish urinishlari jurnali |
 
 ## Texnologiyalar
 
 | Qatlam   | Texnologiya | Papka |
 |----------|-------------|-------|
 | Frontend | React 18 + Vite, react-router, oddiy CSS | [code/frontend/](code/frontend/) |
-| Backend  | Node.js + Express, JWT, helmet, express-rate-limit | [code/backend/](code/backend/) |
+| Backend  | Node.js + Express, JWT, bcryptjs, svg-captcha, helmet, express-rate-limit | [code/backend/](code/backend/) |
 | Baza     | PostgreSQL (lokal yoki Supabase) | [code/database/](code/database/) |
+| Testlar  | `node:test` + supertest | [code/backend/test/](code/backend/test/) |
 
 ```
-Brauzer (React)  ──HTTP/JSON + JWT──▶  Express REST API  ──SQL──▶  PostgreSQL
-   :5173 / Vercel        /api/...          :5000 / Render             lokal / Supabase
+Brauzer (React)  ──HTTP/JSON (+ Bearer xodim uchun)──▶  Express REST API  ──SQL──▶  PostgreSQL
+   :5173 / Vercel              /api/...                   :5000 / Render             lokal / Supabase
 ```
 
 ## Loyiha tuzilmasi
@@ -32,36 +34,42 @@ Brauzer (React)  ──HTTP/JSON + JWT──▶  Express REST API  ──SQL─�
 ```
 code/
 ├── database/
-│   ├── schema/001_schema.sql   # 7 jadval: roles, users, categories, products, cart_items, orders, order_items
-│   └── seed/001_seed.sql       # admin, user, 8 kategoriya, 29 mahsulot, namunaviy buyurtma
+│   ├── schema/001_schema.sql        # asosiy jadvallar (db:init noldan quradi)
+│   ├── seed/001_seed.sql            # 8 kategoriya, 29 mahsulot, namunaviy buyurtma
+│   └── migrations/002_auth_rbac.sql # role turlari, login + kod, pages/accesses, sessiyalar, captcha, RLS
 ├── backend/
-│   ├── scripts/db-init.js      # sxema + seed (npm run db:init)
-│   ├── scripts/smoke-test.js   # asosiy oqim tekshiruvi (npm run test:smoke)
+│   ├── scripts/
+│   │   ├── db-init.js       # noldan: sxema + seed + migratsiyalar + admin (npm run db:init)
+│   │   ├── db-migrate.js    # faqat yangi migratsiyalar, hech narsa o'chirmaydi (npm run db:migrate)
+│   │   ├── seed-admin.js    # boshlang'ich admin (npm run db:seed-admin)
+│   │   └── smoke-test.js    # ishlab turgan API'ni tez tekshirish (npm run test:smoke)
+│   ├── test/                # avtomatik testlar (npm test)
 │   └── src/
-│       ├── app.js, server.js
-│       ├── config/             # db.js (DATABASE_URL + SSL), env.js (JWT, CORS)
+│       ├── app.js, server.js           # server.js majburiy env'larni tekshiradi
+│       ├── config/                     # db.js (DATABASE_URL + SSL), env.js
+│       ├── utils/                      # code.js, tokens.js, captcha.js, httpError.js
 │       ├── api/
-│       │   ├── middleware/     # auth.js (JWT, admin), errorHandler.js
-│       │   ├── routes/         # auth, catalog, cart, orders, admin, crud, meta
-│       │   └── validators/     # validate.js
-│       ├── services/crud.service.js   # umumiy CRUD: sahifalash, qidiruv, filtr
+│       │   ├── middleware/   # authenticate, requireAccess, requireRoleType, rateLimits, asyncHandler, errorHandler
+│       │   ├── routes/       # auth, catalog, orders (ochiq), admin + crud + meta (panel), management
+│       │   └── validators/
+│       ├── services/crud.service.js    # umumiy CRUD: sahifalash, qidiruv, filtr
 │       └── modules/
-│           ├── registry.js     # admin CRUD resurslari (categories, products)
-│           ├── auth/ catalog/ cart/ orders/ users/
+│           ├── registry.js   # panel CRUD resurslari va ularning sahifa kodlari
+│           └── auth/ users/ roles/ accesses/ loginAttempts/ catalog/ orders/
 └── frontend/
-    ├── vercel.json             # SPA marshrutlari uchun rewrite
+    ├── vercel.json                     # SPA marshrutlari uchun rewrite
     └── src/
-        ├── pages/              # Catalog, Product, Cart, Orders, Login, Register, admin/*
-        ├── components/         # layout, shop, tables, forms, modals
-        ├── context/            # Auth, Cart, Toast
-        └── services/api.js     # barcha HTTP so'rovlar
-docs/umumiy/                    # MVP talablari va qarorlar
-render.yaml                     # Render Blueprint (backend)
+        ├── pages/            # Catalog, Product, Cart (ochiq); panel/* va admin/* (xodimlar); 403, 404
+        ├── components/       # layout (Public/Panel), auth (ProtectedRoute, Can), forms (Captcha), shop, tables, modals
+        ├── context/          # Auth, Cart (localStorage), Toast
+        └── services/api.js   # barcha HTTP so'rovlar, tokenlar va refresh navbati
+docs/umumiy/                  # MVP talablari va qarorlar
+render.yaml                   # Render Blueprint (backend)
 ```
 
 ## Lokal ishga tushirish
 
-Kerak: **Node.js 18+** va **PostgreSQL 14+** (yoki Supabase loyihasi).
+Kerak: **Node.js 20+** (`npm test` uchun 22+) va **PostgreSQL 14+** (yoki Supabase loyihasi).
 
 ### 1. Backend + baza
 
@@ -71,141 +79,221 @@ npm install
 copy .env.example .env        # Mac/Linux: cp .env.example .env
 ```
 
-`.env` ni to‘ldiring (pastdagi jadvalga qarang): lokal baza uchun `DB_PASSWORD`, Supabase uchun `DATABASE_URL`. Keyin:
+`.env` ni to‘ldiring (pastdagi jadvalga qarang). **Majburiy**: `JWT_ACCESS_SECRET` va `CAPTCHA_SECRET` —
+ikkita har xil uzun tasodifiy qator. Har birini shu buyruq bilan yarating:
 
 ```bash
-npm run db:init               # jadvallar + namunaviy ma'lumotlar
+node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+```
+
+Keyin:
+
+```bash
+npm run db:init               # YANGI baza: jadvallar + namunaviy ma'lumotlar + migratsiyalar + admin
 npm run dev                   # API: http://localhost:5000/api
 ```
 
+`db:init` oxirida admin login va kodini chiqaradi (pastda: [Birinchi admin bilan kirish](#birinchi-admin-bilan-kirish)).
 Tekshirish: http://localhost:5000/api/health → `{"status":"ok","db":"connected"}`
 
-> ⚠️ `npm run db:init` mavjud jadvallarni **o‘chirib, qaytadan** yaratadi (eski 12 jadvalli ombor versiyasining jadvallarini ham). Ishlab turgan bazada ishlatmang.
+> ⚠️ `npm run db:init` mavjud jadvallarni **o‘chirib, qaytadan** yaratadi. Ma’lumoti bor bazani yangilash uchun
+> faqat `npm run db:migrate` ishlating. `NODE_ENV=production` da `db:init` `--force` siz ishlamaydi.
 
 ### 2. Frontend (yangi terminalda)
 
 ```bash
 cd code/frontend
 npm install
-npm run dev                   # http://localhost:5173
+npm run dev                   # http://localhost:5173  (panel: http://localhost:5173/panel/login)
 ```
 
 Lokalda `VITE_API_URL` bo‘sh qoladi: `/api` so‘rovlari vite proxy orqali `localhost:5000` ga boradi.
 Backend boshqa portda bo‘lsa: `VITE_PROXY_TARGET=http://localhost:5001 npm run dev`.
 
-### 3. Namunaviy hisoblar
-
-| Rol   | Email | Parol |
-|-------|-------|-------|
-| Admin | `admin@qurilish.uz` | `admin123` |
-| User  | `user@qurilish.uz`  | `user123`  |
-
-### 4. Tekshirish
-
-Backend ishlab turganda:
+### 3. Tekshirish
 
 ```bash
 cd code/backend
-npm run test:smoke            # 38 ta tekshiruv: katalog, auth, savatcha, buyurtma, ruxsatlar, admin
+npm test                      # 24 ta test: login, captcha, qulf, sessiya, RBAC, ierarxiya, ochiq buyurtma
+npm run test:smoke            # ishlab turgan API (standart localhost:5000) — bazaga yozmaydi
 ```
 
-Boshqa manzilni tekshirish: `API_URL=https://.../api npm run test:smoke`. Skript test foydalanuvchi va buyurtma yaratadi
-(buyurtmani oxirida bekor qiladi, qoldiq qaytadi) — production bazada ishlatmang.
+`npm test` alohida **`qurilish_dokoni_test`** bazasini har safar noldan quradi. `.env` dagi `DATABASE_URL`
+testda **hech qachon** ishlatilmaydi (Supabase bazangiz tasodifan tozalanmasligi uchun).
+Boshqa API’ni tekshirish: `API_URL=https://.../api npm run test:smoke`.
 
 ## `.env` sozlamalari
 
-**Backend** (`code/backend/.env`):
+**Backend** (`code/backend/.env`, namunasi: [.env.example](code/backend/.env.example)):
 
 | O‘zgaruvchi | Majburiy | Izoh |
 |-------------|----------|------|
-| `DATABASE_URL` | Supabase/Render’da ha | To‘liq ulanish manzili. Berilsa, `DB_*` e’tiborga olinmaydi |
+| `JWT_ACCESS_SECRET` | **ha** | Access token imzosi, kamida 32 bayt. Eski nomi `JWT_SECRET` ham o‘qiladi |
+| `CAPTCHA_SECRET` | **ha** | Captcha javobining HMAC kaliti, kamida 32 bayt, `JWT_ACCESS_SECRET` dan farqli |
+| `DATABASE_URL` | production’da ha | To‘liq ulanish manzili (Supabase Session pooler). Berilsa, `DB_*` e’tiborga olinmaydi |
+| `FRONTEND_URL` | production’da ha | CORS: frontend manzili; bir nechtasi vergul bilan (Vercel preview). Eski nomi `CORS_ORIGIN` ham o‘qiladi |
+| `ADMIN_LOGIN` | yo‘q | Boshlang‘ich admin login’i (standart `admin`) |
+| `ADMIN_INITIAL_CODE` | yo‘q | Boshlang‘ich admin kodi `XXXX-XXXX`. Bo‘sh bo‘lsa — generatsiya qilinib bir marta chiqariladi |
 | `DB_SSL` | yo‘q | `true`/`false`. Bo‘sh bo‘lsa: manzilda `supabase` bo‘lsa SSL yoqiladi |
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | lokalda | `DATABASE_URL` bo‘lmasa ishlatiladi |
-| `JWT_SECRET` | production’da ha | Uzun tasodifiy qator: `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"` |
-| `JWT_EXPIRES_IN` | yo‘q | Token muddati, standart `7d` |
-| `CORS_ORIGIN` | production’da ha | Frontend manzili; bir nechtasi vergul bilan |
-| `NODE_ENV` | yo‘q | `production` bo‘lsa `JWT_SECRET` majburiy |
+| `NODE_ENV` | yo‘q | `production` |
 | `PORT` | yo‘q | Standart `5000` (Render o‘zi beradi) |
+
+Majburiy qiymat yetishmasa server ishga tushmaydi va nima yetishmayotganini aniq yozadi.
 
 **Frontend** (`code/frontend/.env`, faqat deploy uchun):
 
 | O‘zgaruvchi | Izoh |
 |-------------|------|
-| `VITE_API_URL` | Backend manzili, masalan `https://qurilishdokoni-api.onrender.com/api`. Lokalda bo‘sh |
+| `VITE_API_URL` | Backend manzili, masalan `https://qurilishdokoni-api.onrender.com/api`. Lokalda bo‘sh. Brauzerga ochiq ketadi — maxfiy narsa yozmang |
 
 ## REST API
 
-Barcha javoblar JSON. Himoyalangan so‘rovlarda header: `Authorization: Bearer <token>`.
+Barcha javoblar JSON. Panel so‘rovlarida header: `Authorization: Bearer <accessToken>`.
 
-### Auth
-
-| Metod | Manzil | Kim | Tavsif |
-|-------|--------|-----|--------|
-| POST | `/api/auth/register` | hamma | `{ full_name, email, phone?, password }` → `{ token, user }` (har doim `user` roli) |
-| POST | `/api/auth/login` | hamma | `{ email, password }` → `{ token, user }` |
-| GET  | `/api/auth/me` | login | joriy foydalanuvchi |
-
-### Katalog (login shart emas)
+### Ochiq (mijoz, login yo‘q)
 
 | Metod | Manzil | Tavsif |
 |-------|--------|--------|
-| GET | `/api/categories` | faol kategoriyalar va mahsulotlar soni |
-| GET | `/api/products` | `?search=&category_id=&sort=id\|name\|price&order=asc\|desc&page=1&limit=12` |
-| GET | `/api/products/:id` | bitta mahsulot |
+| GET  | `/api/health` | server va baza holati |
+| GET  | `/api/categories` | faol kategoriyalar va mahsulotlar soni |
+| GET  | `/api/products` | `?search=&category_id=&sort=id\|name\|price&order=asc\|desc&page=1&limit=12` |
+| GET  | `/api/products/:id` | bitta mahsulot |
+| GET  | `/api/auth/captcha` | `{ captchaId, svg }` |
+| POST | `/api/orders` | `{ customer_name, phone, address, note?, items: [{ product_id, quantity }], captchaId, captchaAnswer }` |
 
-Faqat faol (`active`) kategoriyadagi faol mahsulotlar ko‘rinadi.
+Katalogda faqat faol kategoriyadagi faol mahsulotlar va faqat mijozga kerakli maydonlar qaytadi.
+Buyurtma **bitta tranzaksiyada**: mahsulot qatorlari qulflanadi (`FOR UPDATE`), narx va nom **bazadan** olinadi
+(mijoz yuborgan narxga ishonilmaydi), qoldiq tekshiriladi va kamaytiriladi. Yetmasa — `409 OUT_OF_STOCK`.
 
-### Savatcha (login)
-
-| Metod | Manzil | Tavsif |
-|-------|--------|--------|
-| GET    | `/api/cart` | `{ items, total, count }` |
-| POST   | `/api/cart/items` | `{ product_id, quantity? }` — bor bo‘lsa miqdor qo‘shiladi |
-| PUT    | `/api/cart/items/:id` | `{ quantity }` |
-| DELETE | `/api/cart/items/:id` | qatorni olib tashlash |
-| DELETE | `/api/cart` | savatchani tozalash |
-
-### Buyurtmalar (login)
+### Kirish (xodim)
 
 | Metod | Manzil | Tavsif |
 |-------|--------|--------|
-| POST | `/api/orders` | `{ phone, address, note? }` — savatchadan buyurtma |
-| GET  | `/api/orders` | o‘z buyurtmalari (qatorlari bilan) |
+| POST | `/api/auth/login` | `{ login, code, captchaId?, captchaAnswer? }` → `{ accessToken, refreshToken, user }` |
+| POST | `/api/auth/refresh` | `{ refreshToken }` → yangi juftlik (eski refresh bekor bo‘ladi) |
+| POST | `/api/auth/logout` | `{ refreshToken }` → `204` |
+| GET  | `/api/auth/me` | `{ id, fullName, login, role: { id, name, type }, fullAccess, accesses }` |
 
-Buyurtma **bitta tranzaksiyada** bajariladi: mahsulot qatorlari qulflanadi (`SELECT … FOR UPDATE`), qoldiq tekshiriladi,
-`orders` + `order_items` yoziladi, qoldiq kamaytiriladi, savatcha tozalanadi. Biror qadam xato bersa, hammasi bekor bo‘ladi.
-Ikki xaridor bir vaqtda oxirgi donani ololmaydi (biri `409` oladi).
+### Panel (access bo‘yicha)
 
-### Admin (faqat `admin` roli)
+| Metod | Manzil | Huquq |
+|-------|--------|-------|
+| GET    | `/api/admin/meta` | login |
+| GET    | `/api/admin/orders` | `ORDER_VIEW` |
+| PATCH  | `/api/admin/orders/:id/status` | `{ status }`: `confirmed` → `ORDER_APPROVE`, boshqasi → `ORDER_UPDATE` |
+| GET    | `/api/admin/:resource`, `/:id` | `PRODUCT_VIEW` / `CATEGORY_VIEW` |
+| GET    | `/api/admin/:resource/options` | shu resurs yoki unga bog‘langan resurs huquqi |
+| POST   | `/api/admin/:resource` | `*_CREATE` |
+| PUT    | `/api/admin/:resource/:id` | `*_UPDATE`; `status` o‘zgarsa qo‘shimcha `*_ARCHIVE` |
+| DELETE | `/api/admin/:resource/:id` | `*_DELETE` |
 
-| Metod | Manzil | Tavsif |
-|-------|--------|--------|
-| GET    | `/api/admin/meta` | admin formalari uchun ustunlar tavsifi |
-| GET    | `/api/admin/orders` | `?status=&search=&page=&limit=` barcha buyurtmalar |
-| PATCH  | `/api/admin/orders/:id/status` | `{ status }` |
-| GET    | `/api/admin/:resource` | `categories` yoki `products`: `?page=&limit=&search=&sort=&order=&status=&category_id=` |
-| GET    | `/api/admin/:resource/options` | select uchun `[{ id, label }]` |
-| GET / POST / PUT / DELETE | `/api/admin/:resource[/:id]` | CRUD |
+### Boshqaruv
 
-Buyurtma holatlari: `new → confirmed → shipped → delivered`; `delivered` dan oldin istalgan bosqichda `cancelled`.
-Bekor qilinganda mahsulotlar qoldig‘i qaytariladi.
+| Metod | Manzil | Kim |
+|-------|--------|-----|
+| GET / POST | `/api/users` | ADMIN, DIRECTOR. POST `{ fullName, login, roleId }` → `{ user, code }` |
+| PATCH | `/api/users/:id` | ADMIN, DIRECTOR |
+| PATCH | `/api/users/:id/status` | ADMIN, DIRECTOR. `{ isActive }` |
+| POST  | `/api/users/:id/regenerate-code` | ADMIN, DIRECTOR → `{ user, code }` |
+| GET / POST / PUT / DELETE | `/api/roles[/:id]` | ADMIN, DIRECTOR |
+| PUT   | `/api/roles/:id/accesses` | ADMIN, DIRECTOR. `{ accessIds: [] }`, tranzaksiyada |
+| GET   | `/api/accesses` | ADMIN, DIRECTOR (sahifalar bo‘yicha guruhlangan) |
+| GET   | `/api/login-attempts` | faqat ADMIN. `?page=&limit=&login=&ip=&success=&reason=` |
+
+Buyurtma holatlari: `new → confirmed → shipped → delivered`; `delivered` dan oldin istalgan bosqichda `cancelled`
+(qoldiq qaytariladi).
 
 ### Javob va xatolar
 
 ```json
 { "data": [ ... ], "total": 29, "page": 1, "limit": 12, "pages": 3 }
-{ "error": "Ma'lumotlar noto'g'ri to'ldirilgan", "details": { "price": "\"Narx\" 0 dan kichik bo'lmasin" } }
+{ "error": { "code": "VALIDATION_ERROR", "message": "Ma'lumotlar noto'g'ri to'ldirilgan", "details": { "phone": "..." } } }
+{ "error": { "code": "FORBIDDEN", "message": "Bu amal uchun sizda huquq yo'q", "requiredAccess": ["PRODUCT_DELETE"] } }
 ```
 
-`200` OK · `201` yaratildi · `400` noto‘g‘ri ma’lumot · `401` login kerak · `403` ruxsat yo‘q · `404` topilmadi ·
-`409` ziddiyat (takroriy email, bog‘langan yozuv, qoldiq yetmaydi) · `429` so‘rovlar juda ko‘p · `503` baza ishlamayapti.
+Asosiy kodlar: `VALIDATION_ERROR`, `CAPTCHA_REQUIRED`, `CAPTCHA_INVALID`, `INVALID_CREDENTIALS`, `ACCOUNT_LOCKED`
+(`retryAfterSeconds` bilan, HTTP 423), `TOKEN_EXPIRED`, `REFRESH_REUSED`, `FORBIDDEN`, `NOT_FOUND`, `DUPLICATE`,
+`LAST_ADMIN`, `OUT_OF_STOCK`, `TOO_MANY_REQUESTS`. Production’da stack trace va bazaning ichki tafsilotlari qaytmaydi.
 
-### Xavfsizlik
+## Xavfsizlik va huquqlar
 
-- Parollar `scrypt` bilan hash qilinadi, API javobida qaytmaydi.
-- JWT har so‘rovda bazadagi foydalanuvchi bilan solishtiriladi (bloklangan foydalanuvchi eski token bilan kira olmaydi).
-- `helmet` xavfsizlik headerlari; rate-limit: `/api` — 15 daqiqada 300 so‘rov, login/ro‘yxat — 15 daqiqada 20 so‘rov.
-- Kiruvchi ma’lumot server tomonda tekshiriladi; SQL faqat parametrlar bilan, ustun nomlari faqat `registry.js` dan.
+### Migration va seed
+
+**Lokal, yangi baza** — `npm run db:init` (sxema → seed → migratsiyalar → admin).
+
+**Lokal yoki Supabase, ma’lumoti bor baza** (masalan oldingi versiyadan yangilash):
+
+```bash
+cd code/backend
+npm run db:migrate            # faqat hali bajarilmagan migrations/*.sql — hech narsa o'chirmaydi
+npm run db:seed-admin         # ADMIN_LOGIN bilan xodim yo'q bo'lsa — yaratadi
+```
+
+Supabase uchun ikkinchi yo‘l: **SQL Editor** da [002_auth_rbac.sql](code/database/migrations/002_auth_rbac.sql) ni to‘liq bajaring
+(idempotent — qayta bajarilsa xato bermaydi). Admin’ni esa kompyuteringizdan `DATABASE_URL` bilan `npm run db:seed-admin`
+orqali yarating — ochiq kod SQL faylda saqlanmaydi, bazaga faqat bcrypt hash yoziladi.
+
+Render har ishga tushishda `npm run db:migrate` ni o‘zi bajaradi ([render.yaml](render.yaml)).
+
+Migratsiya eski ma’lumotni o‘chirmaydi: eski email/parolli akkauntlar nofaol bo‘lib qoladi (panelga kira olmaydi),
+buyurtmalardagi mijoz ismi `orders.customer_name` ga ko‘chiriladi. Hamma jadvallarda **RLS** yoqiladi — Supabase’ning
+anon kalitli REST API’si orqali jadvallarni o‘qib/yozib bo‘lmaydi (backend jadval egasi sifatida ishlaydi, unga ta’sir qilmaydi).
+
+### Birinchi admin bilan kirish
+
+1. `ADMIN_LOGIN` (standart `admin`) va ixtiyoriy `ADMIN_INITIAL_CODE` (`XXXX-XXXX`) ni `.env` ga yozing.
+   Kod bo‘sh bo‘lsa, `db:seed-admin` / `db:init` tasodifiy kod yaratib, uni **faqat bir marta** konsolga chiqaradi.
+2. Saytda **Kirish** → `/panel/login` → login va kod.
+3. Kirgach **Xodimlar** bo‘limida o‘zingiz uchun “Kodni yangilash” ni bosing — `ADMIN_INITIAL_CODE` endi ishlamaydi.
+   Keyin `.env` / Render’dan `ADMIN_INITIAL_CODE` ni o‘chirib qo‘ying.
+
+### Role turlari va ierarxiya
+
+| Turi | Huquq | Kimni boshqaradi |
+|------|-------|------------------|
+| `ADMIN` | to‘liq (access tekshirilmaydi) | barcha turdagi role va xodimlar; kirish jurnali |
+| `DIRECTOR` | to‘liq (access tekshirilmaydi) | faqat `MANAGER` role va xodimlari |
+| `MANAGER` | faqat role’iga berilgan access’lar | hech kimni (boshqaruv API → `403`) |
+
+Qoidalar **service qatlamida** majburiy tekshiriladi (frontend faqat yashiradi):
+DIRECTOR ADMIN/DIRECTOR yarata olmaydi, o‘zgartira olmaydi va xodimni MANAGER’dan yuqoriga ko‘tara olmaydi;
+hech kim o‘zini bloklay olmaydi va o‘z role’ini o‘zgartira olmaydi; oxirgi faol ADMIN bloklanmaydi va ADMIN’likdan chiqmaydi.
+Access’lar tokenga yozilmaydi — har so‘rovda bazadan olinadi, shuning uchun o‘zgarish qayta login’siz darhol kuchga kiradi.
+
+### Kirish va sessiya
+
+- **Kod**: 8 belgi `XXXX-XXXX`, alifbo `ABCDEFGHJKMNPQRSTUVWXYZ23456789` (0/O/1/I/L yo‘q), `crypto.randomInt`.
+  Bazada faqat bcrypt (cost 12). Kiritilganda tire/bo‘shliq olib tashlanadi, katta harfga o‘tkaziladi.
+  Ochiq kod javobda faqat bir marta qaytadi (yaratilganda / yangilanganda). Kod yangilansa — eski kod va barcha sessiyalar bekor.
+- **Login**: user topilmasa ham bcrypt bilan solishtiriladi (vaqt bo‘yicha login borligini bilib bo‘lmaydi), xabar doim
+  “Login yoki kod noto‘g‘ri”. 5 ta ketma-ket xato → 15 daqiqa qulf. Shu login yoki IP’dan 15 daqiqada ≥3 xato → captcha majburiy.
+  Har urinish `login_attempts` ga yoziladi.
+- **Captcha**: o‘zimizniki (`svg-captcha`), javob `HMAC-SHA256(CAPTCHA_SECRET)` bilan, 2 daqiqa, bir martalik. Ochiq buyurtma formasida har doim.
+- **Tokenlar**: access JWT HS256 15 daqiqa (`{ sub, rt }`), refresh 48 bayt tasodifiy, bazada sha256, 7 kun, har refresh’da rotatsiya.
+  Bekor qilingan refresh qayta kelsa — o‘g‘irlik belgisi, xodimning barcha sessiyalari yopiladi.
+  Bloklangan xodimning amaldagi access tokeni ham darhol `401`.
+- **Rate-limit (IP)**: `/api` 300, login 20, captcha 30, refresh 60, ochiq buyurtma 10 — har biri 15 daqiqada.
+- **Frontend**: tokenlar `localStorage` da (frontend va backend turli domenda). `dangerouslySetInnerHTML` ishlatilmaydi,
+  captcha SVG `<img src="data:...">` orqali. 401 → bitta umumiy refresh (tablar orasida ham navbat).
+- Muddati o‘tgan captcha, refresh token va 90 kundan eski kirish jurnali har 10 daqiqada tozalanadi.
+
+### Yangi sahifa yoki amal qo‘shish
+
+1. **Baza** — yangi migratsiya fayli `code/database/migrations/003_<nom>.sql` (idempotent):
+   ```sql
+   INSERT INTO pages (code, name, sort_order) VALUES ('SUPPLIER', 'Yetkazib beruvchilar', 4) ON CONFLICT (code) DO NOTHING;
+   INSERT INTO accesses (page_id, action, code)
+   SELECT p.id, a.action, p.code || '_' || a.action
+   FROM (VALUES ('VIEW'), ('CREATE'), ('UPDATE')) AS a(action) JOIN pages p ON p.code = 'SUPPLIER'
+   ON CONFLICT (code) DO NOTHING;
+   ```
+   Keyin `npm run db:migrate`.
+2. **Backend** — marshrutga `authenticate` + `requireAccess('SUPPLIER_VIEW')` (POST → `_CREATE`, PUT/PATCH → `_UPDATE`,
+   DELETE → `_DELETE`, arxivlash → `_ARCHIVE`, tasdiqlash → `_APPROVE`). Oddiy CRUD bo‘lsa — `registry.js` ga `page: 'SUPPLIER'` bilan resurs qo‘shish kifoya.
+3. **Frontend** — [App.jsx](code/frontend/src/App.jsx) da `<ProtectedRoute access="SUPPLIER_VIEW">`, [PanelLayout.jsx](code/frontend/src/components/layout/PanelLayout.jsx)
+   dagi `PANEL_MENU` ga qator, har bir tugmani `<Can access="SUPPLIER_CREATE">…</Can>` ichiga oling.
+4. **Test** — [test/auth.test.js](code/backend/test/auth.test.js) ga access’siz `403` / access bilan `200` tekshiruvi.
 
 ## Deploy: Supabase + Render + Vercel
 
@@ -214,16 +302,22 @@ Bekor qilinganda mahsulotlar qoldig‘i qaytariladi.
 1. https://supabase.com da yangi loyiha yarating, baza parolini saqlang.
 2. **Connect** → **Session pooler** URI’ni oling (Render IPv4 ishlatadi, to‘g‘ridan-to‘g‘ri ulanish manzili IPv6 — ishlamasligi mumkin):
    `postgresql://postgres.<ref>:<PAROL>@aws-0-<region>.pooler.supabase.com:5432/postgres`
-3. Jadvallarni yarating — ikki yo‘ldan biri:
-   - kompyuteringizdan: `code/backend/.env` ga shu `DATABASE_URL` ni yozing va `npm run db:init`;
-   - yoki Supabase **SQL Editor** da `001_schema.sql`, keyin `001_seed.sql` ni bajaring.
-4. Production’da seed’dagi `admin123` parolini darhol almashtiring (yoki seed o‘rniga o‘z admin foydalanuvchingizni yarating).
+3. Jadvallar — ikki yo‘ldan biri:
+   - **yangi** baza: kompyuteringizda `code/backend/.env` ga shu `DATABASE_URL` ni yozing va `npm run db:init`;
+   - **mavjud** baza (oldingi versiya): `npm run db:migrate` (yoki SQL Editor’da `002_auth_rbac.sql`).
+4. Admin: `DATABASE_URL`, `ADMIN_LOGIN`, `ADMIN_INITIAL_CODE` bilan kompyuteringizdan `npm run db:seed-admin`.
+   Ishingiz tugagach `.env` dagi Supabase `DATABASE_URL` ni o‘chirib qo‘ying.
 
 ### 2. Backend — Render
 
 1. https://render.com → **New → Blueprint** → shu GitHub repozitoriyni tanlang ([render.yaml](render.yaml) o‘qiladi).
-   Qo‘lda yaratsangiz: **Web Service**, Root Directory `code/backend`, Build `npm ci`, Start `npm start`, Health check `/api/health`.
-2. Environment: `DATABASE_URL` (Supabase pooler), `CORS_ORIGIN` (Vercel manzili, 3-qadamdan keyin), `JWT_SECRET` (Blueprint o‘zi yaratadi), `NODE_ENV=production`.
+   Qo‘lda yaratsangiz: **Web Service**, Root Directory `code/backend`, Build `npm ci --omit=dev`,
+   Start `npm run db:migrate && npm start`, Health check `/api/health`.
+2. Environment (qo‘lda kiritiladiganlar):
+   - `DATABASE_URL` — Supabase Session pooler;
+   - `FRONTEND_URL` — Vercel manzili (3-qadamdan keyin), oxirida `/` siz;
+   - `JWT_ACCESS_SECRET`, `CAPTCHA_SECRET` — Blueprint o‘zi yaratadi (qo‘lda yaratsangiz — ikkita har xil uzun qator);
+   - `NODE_ENV=production`.
 3. Tekshirish: `https://<servis>.onrender.com/api/health`.
    Bepul tarifda servis 15 daqiqa so‘rov bo‘lmasa uxlaydi — birinchi so‘rov ~1 daqiqa kechikishi mumkin.
 
@@ -232,21 +326,23 @@ Bekor qilinganda mahsulotlar qoldig‘i qaytariladi.
 1. https://vercel.com → **Add New → Project** → repozitoriyni tanlang.
 2. **Root Directory**: `code/frontend` (Framework: Vite, Build: `npm run build`, Output: `dist`).
 3. Environment Variable: `VITE_API_URL=https://<servis>.onrender.com/api` (build vaqtida o‘qiladi — o‘zgartirsangiz, qayta deploy qiling).
-4. Deploy’dan keyin Vercel manzilini Render’dagi `CORS_ORIGIN` ga yozing va backendni qayta ishga tushiring.
+4. Deploy’dan keyin Vercel manzilini Render’dagi `FRONTEND_URL` ga yozing va backendni qayta ishga tushiring.
 
-[vercel.json](code/frontend/vercel.json) barcha marshrutlarni `index.html` ga yo‘naltiradi — `/savatcha` kabi sahifalar yangilanganda 404 bermaydi.
+[vercel.json](code/frontend/vercel.json) barcha marshrutlarni `index.html` ga yo‘naltiradi — `/panel/users` kabi sahifalar yangilanganda 404 bermaydi.
 
 ## Ko‘p uchraydigan muammolar
 
 | Belgi | Sabab va yechim |
 |-------|-----------------|
+| `Server ishga tushmadi — sozlamalar yetarli emas` | Xabarda ko‘rsatilgan env’ni qo‘shing (`JWT_ACCESS_SECRET`, `CAPTCHA_SECRET`, production’da `DATABASE_URL`, `FRONTEND_URL`) |
 | `password authentication failed` | `.env` dagi `DB_PASSWORD` yoki `DATABASE_URL` paroli noto‘g‘ri |
 | `ECONNREFUSED ...5432` | Lokal PostgreSQL ishlamayapti (Windows: Services → postgresql → Start) |
 | `ENOTFOUND` / `ENETUNREACH` (Supabase) | To‘g‘ridan-to‘g‘ri ulanish o‘rniga **Session pooler** manzilini ishlating |
-| `JWT_SECRET o'rnatilmagan` | `NODE_ENV=production` da `JWT_SECRET` majburiy |
-| Brauzerda CORS xatosi | Backenddagi `CORS_ORIGIN` frontend manzili bilan aynan mos emas (oxirida `/` bo‘lmasin) |
+| Brauzerda CORS xatosi | Backenddagi `FRONTEND_URL` frontend manzili bilan aynan mos emas |
+| Admin kodi esdan chiqdi | Boshqa ADMIN “Kodni yangilash” qiladi. Yagona admin bo‘lsa: bazada uning `code_hash` ini `NULL` qilib, `ADMIN_LOGIN` ni yangi login bilan `npm run db:seed-admin` |
+| `Akkaunt vaqtincha bloklangan` | 15 daqiqa kuting yoki ADMIN/DIRECTOR xodimni “Faollashtirish” qiladi (qulf olinadi) |
 | Frontend: "Serverga ulanib bo‘lmadi" | Backend ishga tushmagan yoki `VITE_API_URL` noto‘g‘ri |
-| `429 So'rovlar juda ko'p` | Rate-limit; 15 daqiqa kuting yoki backendni qayta ishga tushiring (lokalda) |
+| `429 So'rovlar juda ko'p` | Rate-limit; 15 daqiqa kuting |
 
 ## Git
 
