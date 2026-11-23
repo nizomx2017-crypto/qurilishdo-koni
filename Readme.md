@@ -3,7 +3,7 @@
 Qurilish va sanoat materiallari uchun o‘quv internet-do‘kon (MVP).
 
 Mijoz **ro‘yxatdan o‘tmaydi**: katalogdan mahsulot topadi, savatchaga qo‘shadi va buyurtma berayotganda ismi, telefoni va manzilini kiritadi.
-Xodimlar alohida **panelda** (`/panel`, login + kod) o‘z huquqlari doirasida buyurtma, mahsulot va kategoriyalarni boshqaradi.
+Xodimlar alohida **panelda** (`/panel`, username + parol) o‘z huquqlari doirasida buyurtma, mahsulot va kategoriyalarni boshqaradi.
 Talablar: [docs/umumiy/](docs/umumiy/).
 
 ## Imkoniyatlar
@@ -36,7 +36,9 @@ code/
 ├── database/
 │   ├── schema/001_schema.sql        # asosiy jadvallar (db:init noldan quradi)
 │   ├── seed/001_seed.sql            # 8 kategoriya, 29 mahsulot, namunaviy buyurtma
-│   └── migrations/002_auth_rbac.sql # role turlari, login + kod, pages/accesses, sessiyalar, captcha, RLS
+│   └── migrations/
+│       ├── 002_auth_rbac.sql         # role turlari, pages/accesses, sessiyalar, captcha, RLS
+│       └── 003_username_password.sql # username + parol, must_change_password, token_version
 ├── backend/
 │   ├── scripts/
 │   │   ├── db-init.js       # noldan: sxema + seed + migratsiyalar + admin (npm run db:init)
@@ -47,7 +49,7 @@ code/
 │   └── src/
 │       ├── app.js, server.js           # server.js majburiy env'larni tekshiradi
 │       ├── config/                     # db.js (DATABASE_URL + SSL), env.js
-│       ├── utils/                      # code.js, tokens.js, captcha.js, httpError.js
+│       ├── utils/                      # password.js, tokens.js, captcha.js, httpError.js
 │       ├── api/
 │       │   ├── middleware/   # authenticate, requireAccess, requireRoleType, rateLimits, asyncHandler, errorHandler
 │       │   ├── routes/       # auth, catalog, orders (ochiq), admin + crud + meta (panel), management
@@ -93,7 +95,7 @@ npm run db:init               # YANGI baza: jadvallar + namunaviy ma'lumotlar + 
 npm run dev                   # API: http://localhost:5000/api
 ```
 
-`db:init` oxirida admin login va kodini chiqaradi (pastda: [Birinchi admin bilan kirish](#birinchi-admin-bilan-kirish)).
+`db:init` oxirida admin username’ini (va `ADMIN_INITIAL_PASSWORD` bo‘sh bo‘lsa — vaqtinchalik parolini) chiqaradi (pastda: [Birinchi admin bilan kirish](#birinchi-admin-bilan-kirish)).
 Tekshirish: http://localhost:5000/api/health → `{"status":"ok","db":"connected"}`
 
 > ⚠️ `npm run db:init` mavjud jadvallarni **o‘chirib, qaytadan** yaratadi. Ma’lumoti bor bazani yangilash uchun
@@ -114,7 +116,7 @@ Backend boshqa portda bo‘lsa: `VITE_PROXY_TARGET=http://localhost:5001 npm run
 
 ```bash
 cd code/backend
-npm test                      # 24 ta test: login, captcha, qulf, sessiya, RBAC, ierarxiya, ochiq buyurtma
+npm test                      # 31 ta test: login, parol siyosati, captcha, qulf, sessiya, RBAC, ierarxiya, seed, ochiq buyurtma
 npm run test:smoke            # ishlab turgan API (standart localhost:5000) — bazaga yozmaydi
 ```
 
@@ -132,8 +134,8 @@ Boshqa API’ni tekshirish: `API_URL=https://.../api npm run test:smoke`.
 | `CAPTCHA_SECRET` | **ha** | Captcha javobining HMAC kaliti, kamida 32 bayt, `JWT_ACCESS_SECRET` dan farqli |
 | `DATABASE_URL` | production’da ha | To‘liq ulanish manzili (Supabase Session pooler). Berilsa, `DB_*` e’tiborga olinmaydi |
 | `FRONTEND_URL` | production’da ha | CORS: frontend manzili; bir nechtasi vergul bilan (Vercel preview). Eski nomi `CORS_ORIGIN` ham o‘qiladi |
-| `ADMIN_LOGIN` | yo‘q | Boshlang‘ich admin login’i (standart `admin`) |
-| `ADMIN_INITIAL_CODE` | yo‘q | Boshlang‘ich admin kodi `XXXX-XXXX`. Bo‘sh bo‘lsa — generatsiya qilinib bir marta chiqariladi |
+| `ADMIN_USERNAME` | yo‘q | Boshlang‘ich admin username’i (standart `admin`) |
+| `ADMIN_INITIAL_PASSWORD` | yo‘q | Boshlang‘ich admin vaqtinchalik paroli. Bo‘sh bo‘lsa — generatsiya qilinib bir marta chiqariladi. Ishlatib bo‘lgach o‘chiring |
 | `DB_SSL` | yo‘q | `true`/`false`. Bo‘sh bo‘lsa: manzilda `supabase` bo‘lsa SSL yoqiladi |
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | lokalda | `DATABASE_URL` bo‘lmasa ishlatiladi |
 | `NODE_ENV` | yo‘q | `production` |
@@ -170,10 +172,14 @@ Buyurtma **bitta tranzaksiyada**: mahsulot qatorlari qulflanadi (`FOR UPDATE`), 
 
 | Metod | Manzil | Tavsif |
 |-------|--------|--------|
-| POST | `/api/auth/login` | `{ login, code, captchaId?, captchaAnswer? }` → `{ accessToken, refreshToken, user }` |
+| POST | `/api/auth/login` | `{ username, password, captchaId?, captchaAnswer? }` → `{ accessToken, refreshToken, mustChangePassword, user }` |
+| POST | `/api/auth/change-password` | `{ currentPassword, newPassword }` → yangi token juftligi (boshqa sessiyalar yopiladi) |
 | POST | `/api/auth/refresh` | `{ refreshToken }` → yangi juftlik (eski refresh bekor bo‘ladi) |
 | POST | `/api/auth/logout` | `{ refreshToken }` → `204` |
-| GET  | `/api/auth/me` | `{ id, fullName, login, role: { id, name, type }, fullAccess, accesses }` |
+| GET  | `/api/auth/me` | `{ id, fullName, username, role: { id, name, type }, fullAccess, accesses, mustChangePassword }` |
+
+`mustChangePassword: true` (vaqtinchalik parol) bo‘lsa faqat `/auth/me`, `/auth/change-password`, `/auth/logout` ishlaydi,
+qolgan panel endpointlari `403 PASSWORD_CHANGE_REQUIRED` qaytaradi.
 
 ### Panel (access bo‘yicha)
 
@@ -192,14 +198,14 @@ Buyurtma **bitta tranzaksiyada**: mahsulot qatorlari qulflanadi (`FOR UPDATE`), 
 
 | Metod | Manzil | Kim |
 |-------|--------|-----|
-| GET / POST | `/api/users` | ADMIN, DIRECTOR. POST `{ fullName, login, roleId }` → `{ user, code }` |
+| GET / POST | `/api/users` | ADMIN, DIRECTOR. POST `{ username, fullName, roleId, password? }` → `{ user, temporaryPassword? }` (parol berilmasa server generatsiya qiladi) |
 | PATCH | `/api/users/:id` | ADMIN, DIRECTOR |
 | PATCH | `/api/users/:id/status` | ADMIN, DIRECTOR. `{ isActive }` |
-| POST  | `/api/users/:id/regenerate-code` | ADMIN, DIRECTOR → `{ user, code }` |
+| POST  | `/api/users/:id/reset-password` | ADMIN, DIRECTOR (ierarxiya bo‘yicha). `{ password? }` → `{ user, temporaryPassword }` |
 | GET / POST / PUT / DELETE | `/api/roles[/:id]` | ADMIN, DIRECTOR |
 | PUT   | `/api/roles/:id/accesses` | ADMIN, DIRECTOR. `{ accessIds: [] }`, tranzaksiyada |
 | GET   | `/api/accesses` | ADMIN, DIRECTOR (sahifalar bo‘yicha guruhlangan) |
-| GET   | `/api/login-attempts` | faqat ADMIN. `?page=&limit=&login=&ip=&success=&reason=` |
+| GET   | `/api/login-attempts` | faqat ADMIN. `?page=&limit=&username=&ip=&success=&reason=` |
 
 Buyurtma holatlari: `new → confirmed → shipped → delivered`; `delivered` dan oldin istalgan bosqichda `cancelled`
 (qoldiq qaytariladi).
@@ -212,7 +218,7 @@ Buyurtma holatlari: `new → confirmed → shipped → delivered`; `delivered` d
 { "error": { "code": "FORBIDDEN", "message": "Bu amal uchun sizda huquq yo'q", "requiredAccess": ["PRODUCT_DELETE"] } }
 ```
 
-Asosiy kodlar: `VALIDATION_ERROR`, `CAPTCHA_REQUIRED`, `CAPTCHA_INVALID`, `INVALID_CREDENTIALS`, `ACCOUNT_LOCKED`
+Asosiy kodlar: `VALIDATION_ERROR`, `WEAK_PASSWORD`, `INVALID_CURRENT_PASSWORD`, `PASSWORD_CHANGE_REQUIRED`, `TOKEN_REVOKED`, `CAPTCHA_REQUIRED`, `CAPTCHA_INVALID`, `INVALID_CREDENTIALS`, `ACCOUNT_LOCKED`
 (`retryAfterSeconds` bilan, HTTP 423), `TOKEN_EXPIRED`, `REFRESH_REUSED`, `FORBIDDEN`, `NOT_FOUND`, `DUPLICATE`,
 `LAST_ADMIN`, `OUT_OF_STOCK`, `TOO_MANY_REQUESTS`. Production’da stack trace va bazaning ichki tafsilotlari qaytmaydi.
 
@@ -227,14 +233,22 @@ Asosiy kodlar: `VALIDATION_ERROR`, `CAPTCHA_REQUIRED`, `CAPTCHA_INVALID`, `INVAL
 ```bash
 cd code/backend
 npm run db:migrate            # faqat hali bajarilmagan migrations/*.sql — hech narsa o'chirmaydi
-npm run db:seed-admin         # ADMIN_LOGIN bilan xodim yo'q bo'lsa — yaratadi
+npm run db:seed-admin         # ADMIN_USERNAME bilan xodim yo'q bo'lsa — yaratadi
 ```
 
-Supabase uchun ikkinchi yo‘l: **SQL Editor** da [002_auth_rbac.sql](code/database/migrations/002_auth_rbac.sql) ni to‘liq bajaring
-(idempotent — qayta bajarilsa xato bermaydi). Admin’ni esa kompyuteringizdan `DATABASE_URL` bilan `npm run db:seed-admin`
-orqali yarating — ochiq kod SQL faylda saqlanmaydi, bazaga faqat bcrypt hash yoziladi.
+Supabase uchun ikkinchi yo‘l: **SQL Editor** da hali bajarilmagan fayllarni tartib bilan to‘liq bajaring —
+[002_auth_rbac.sql](code/database/migrations/002_auth_rbac.sql), keyin [003_username_password.sql](code/database/migrations/003_username_password.sql).
+003 idempotent; 002 esa 003 dan keyin qayta bajarilsa, hech narsa o‘zgartirmasdan xato bilan to‘xtaydi (himoya).
+Admin’ni kompyuteringizdan `DATABASE_URL` bilan `npm run db:seed-admin` orqali yarating — ochiq parol SQL faylda
+saqlanmaydi, bazaga faqat bcrypt hash yoziladi.
 
-Render har ishga tushishda `npm run db:migrate` ni o‘zi bajaradi ([render.yaml](render.yaml)).
+Render har ishga tushishda `npm run db:migrate` va `npm run db:seed-admin -- --only-with-env` ni bajaradi
+([render.yaml](render.yaml)): admin faqat `ADMIN_INITIAL_PASSWORD` berilgan bo‘lsa yaratiladi, parol logga chiqmaydi.
+
+**002 → 003 yangilanishi (oldingi “login + kod” versiyasidan):** `login` → `username` (kichik harfga o‘tkaziladi;
+ruxsat etilmagan belgilar `_` ga almashtirilib, oxiriga id qo‘shiladi, masalan `Bosh-Admin` → `bosh_admin_3`).
+Mavjud xodimlar **eski kodini vaqtinchalik parol** sifatida ishlatadi — tiresiz, katta harflarda (`ABCD-2345` → `ABCD2345`) —
+va birinchi kirishda yangi parol o‘rnatadi. Eski mijoz akkauntlarining parol hashlari `legacy_password_hash` da saqlanadi.
 
 Migratsiya eski ma’lumotni o‘chirmaydi: eski email/parolli akkauntlar nofaol bo‘lib qoladi (panelga kira olmaydi),
 buyurtmalardagi mijoz ismi `orders.customer_name` ga ko‘chiriladi. Hamma jadvallarda **RLS** yoqiladi — Supabase’ning
@@ -242,11 +256,15 @@ anon kalitli REST API’si orqali jadvallarni o‘qib/yozib bo‘lmaydi (backend
 
 ### Birinchi admin bilan kirish
 
-1. `ADMIN_LOGIN` (standart `admin`) va ixtiyoriy `ADMIN_INITIAL_CODE` (`XXXX-XXXX`) ni `.env` ga yozing.
-   Kod bo‘sh bo‘lsa, `db:seed-admin` / `db:init` tasodifiy kod yaratib, uni **faqat bir marta** konsolga chiqaradi.
-2. Saytda **Kirish** → `/panel/login` → login va kod.
-3. Kirgach **Xodimlar** bo‘limida o‘zingiz uchun “Kodni yangilash” ni bosing — `ADMIN_INITIAL_CODE` endi ishlamaydi.
-   Keyin `.env` / Render’dan `ADMIN_INITIAL_CODE` ni o‘chirib qo‘ying.
+1. `ADMIN_USERNAME` (standart `admin`) va ixtiyoriy `ADMIN_INITIAL_PASSWORD` ni `.env` ga yozing.
+   Parol bo‘sh bo‘lsa, `db:seed-admin` / `db:init` tasodifiy 12 belgili parol yaratib, uni **faqat bir marta** konsolga chiqaradi.
+2. Saytda **Kirish** → `/panel/login` → username va vaqtinchalik parol.
+3. Panel sizni **Parolni o‘zgartirish** sahifasiga olib boradi — o‘z parolingizni o‘rnating (shundan keyin boshqa bo‘limlar ochiladi).
+4. `.env` / Render’dan `ADMIN_INITIAL_PASSWORD` ni o‘chirib qo‘ying.
+
+Admin parolini unutsangiz: boshqa ADMIN “Parolni tiklash” qiladi. Yagona admin bo‘lsa — serverda/kompyuteringizda
+`npm run db:seed-admin -- --reset` (parol `ADMIN_INITIAL_PASSWORD` dan yoki generatsiya qilinadi; barcha sessiyalar yopiladi,
+qulf olinadi, birinchi kirishda yana parol o‘zgartiriladi).
 
 ### Role turlari va ierarxiya
 
@@ -263,14 +281,21 @@ Access’lar tokenga yozilmaydi — har so‘rovda bazadan olinadi, shuning uchu
 
 ### Kirish va sessiya
 
-- **Kod**: 8 belgi `XXXX-XXXX`, alifbo `ABCDEFGHJKMNPQRSTUVWXYZ23456789` (0/O/1/I/L yo‘q), `crypto.randomInt`.
-  Bazada faqat bcrypt (cost 12). Kiritilganda tire/bo‘shliq olib tashlanadi, katta harfga o‘tkaziladi.
-  Ochiq kod javobda faqat bir marta qaytadi (yaratilganda / yangilanganda). Kod yangilansa — eski kod va barcha sessiyalar bekor.
-- **Login**: user topilmasa ham bcrypt bilan solishtiriladi (vaqt bo‘yicha login borligini bilib bo‘lmaydi), xabar doim
-  “Login yoki kod noto‘g‘ri”. 5 ta ketma-ket xato → 15 daqiqa qulf. Shu login yoki IP’dan 15 daqiqada ≥3 xato → captcha majburiy.
-  Har urinish `login_attempts` ga yoziladi.
+- **Username**: 3–32 belgi, `a-z 0-9 _ .`, katta-kichik harfga sezgir emas (kichik harfda saqlanadi).
+- **Parol siyosati** (backend’da majburiy, frontend’da jonli ko‘rsatiladi): kamida 8 belgi, kamida 1 harf va 1 raqam,
+  ko‘pi bilan 72 bayt (bcrypt chegarasi), username bilan bir xil emas → aks holda `400 WEAK_PASSWORD`.
+  Bazada faqat bcrypt (cost 12).
+- **Vaqtinchalik parol**: xodim yaratilganda yoki “Parolni tiklash” da (kiritiladi yoki 12 belgili generatsiya,
+  `crypto.randomInt`, javobda faqat bir marta). `must_change_password = true` — kirish mumkin, lekin parol
+  o‘zgartirilmaguncha panel `403 PASSWORD_CHANGE_REQUIRED` qaytaradi.
+- **Parolni o‘zgartirish**: joriy parol tekshiriladi, yangisi eskisidan farqli bo‘lishi shart. Muvaffaqiyatda `token_version++`,
+  barcha refresh tokenlar bekor, joriy qurilmaga yangi juftlik beriladi.
+- **Login**: user topilmasa ham bcrypt bilan solishtiriladi (vaqt bo‘yicha username borligini bilib bo‘lmaydi), xabar doim
+  “Username yoki parol noto‘g‘ri”. 5 ta ketma-ket xato → 15 daqiqa qulf. Shu username yoki IP’dan 15 daqiqada ≥3 xato →
+  captcha majburiy. Har urinish `login_attempts` ga yoziladi.
 - **Captcha**: o‘zimizniki (`svg-captcha`), javob `HMAC-SHA256(CAPTCHA_SECRET)` bilan, 2 daqiqa, bir martalik. Ochiq buyurtma formasida har doim.
-- **Tokenlar**: access JWT HS256 15 daqiqa (`{ sub, rt }`), refresh 48 bayt tasodifiy, bazada sha256, 7 kun, har refresh’da rotatsiya.
+- **Tokenlar**: access JWT HS256 15 daqiqa (`{ sub, rt, tv }`), refresh 48 bayt tasodifiy, bazada sha256, 7 kun, har refresh’da rotatsiya.
+  `tv` — `users.token_version`: parol o‘zgarsa yoki tiklansa versiya oshadi va **eski access tokenlar darhol** `401 TOKEN_REVOKED`.
   Bekor qilingan refresh qayta kelsa — o‘g‘irlik belgisi, xodimning barcha sessiyalari yopiladi.
   Bloklangan xodimning amaldagi access tokeni ham darhol `401`.
 - **Rate-limit (IP)**: `/api` 300, login 20, captcha 30, refresh 60, ochiq buyurtma 10 — har biri 15 daqiqada.
@@ -280,7 +305,7 @@ Access’lar tokenga yozilmaydi — har so‘rovda bazadan olinadi, shuning uchu
 
 ### Yangi sahifa yoki amal qo‘shish
 
-1. **Baza** — yangi migratsiya fayli `code/database/migrations/003_<nom>.sql` (idempotent):
+1. **Baza** — yangi migratsiya fayli `code/database/migrations/004_<nom>.sql` (idempotent):
    ```sql
    INSERT INTO pages (code, name, sort_order) VALUES ('SUPPLIER', 'Yetkazib beruvchilar', 4) ON CONFLICT (code) DO NOTHING;
    INSERT INTO accesses (page_id, action, code)
@@ -305,7 +330,8 @@ Access’lar tokenga yozilmaydi — har so‘rovda bazadan olinadi, shuning uchu
 3. Jadvallar — ikki yo‘ldan biri:
    - **yangi** baza: kompyuteringizda `code/backend/.env` ga shu `DATABASE_URL` ni yozing va `npm run db:init`;
    - **mavjud** baza (oldingi versiya): `npm run db:migrate` (yoki SQL Editor’da `002_auth_rbac.sql`).
-4. Admin: `DATABASE_URL`, `ADMIN_LOGIN`, `ADMIN_INITIAL_CODE` bilan kompyuteringizdan `npm run db:seed-admin`.
+4. Admin: `DATABASE_URL`, `ADMIN_USERNAME`, `ADMIN_INITIAL_PASSWORD` bilan kompyuteringizdan `npm run db:seed-admin`
+   (yoki Render’da `ADMIN_INITIAL_PASSWORD` ni birinchi deploy uchun kiriting).
    Ishingiz tugagach `.env` dagi Supabase `DATABASE_URL` ni o‘chirib qo‘ying.
 
 ### 2. Backend — Render
@@ -339,7 +365,8 @@ Access’lar tokenga yozilmaydi — har so‘rovda bazadan olinadi, shuning uchu
 | `ECONNREFUSED ...5432` | Lokal PostgreSQL ishlamayapti (Windows: Services → postgresql → Start) |
 | `ENOTFOUND` / `ENETUNREACH` (Supabase) | To‘g‘ridan-to‘g‘ri ulanish o‘rniga **Session pooler** manzilini ishlating |
 | Brauzerda CORS xatosi | Backenddagi `FRONTEND_URL` frontend manzili bilan aynan mos emas |
-| Admin kodi esdan chiqdi | Boshqa ADMIN “Kodni yangilash” qiladi. Yagona admin bo‘lsa: bazada uning `code_hash` ini `NULL` qilib, `ADMIN_LOGIN` ni yangi login bilan `npm run db:seed-admin` |
+| Admin paroli esdan chiqdi | Boshqa ADMIN “Parolni tiklash” qiladi. Yagona admin bo‘lsa: `npm run db:seed-admin -- --reset` |
+| `403 PASSWORD_CHANGE_REQUIRED` | Vaqtinchalik parol bilan kirilgan — avval `/panel/change-password` da parolni o‘zgartiring |
 | `Akkaunt vaqtincha bloklangan` | 15 daqiqa kuting yoki ADMIN/DIRECTOR xodimni “Faollashtirish” qiladi (qulf olinadi) |
 | Frontend: "Serverga ulanib bo‘lmadi" | Backend ishga tushmagan yoki `VITE_API_URL` noto‘g‘ri |
 | `429 So'rovlar juda ko'p` | Rate-limit; 15 daqiqa kuting |

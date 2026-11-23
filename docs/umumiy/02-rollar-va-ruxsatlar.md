@@ -8,7 +8,7 @@ Akkaunti yo‘q, ro‘yxatdan o‘tmaydi va login qilmaydi. Katalogni ko‘radi,
 
 ## Xodimlar
 
-Xodim o‘zi ro‘yxatdan o‘tmaydi — uni Administrator yoki Direktor yaratadi. Panelga **login + kod** (`XXXX-XXXX`) bilan kiradi. Har bir xodimning bitta role’i bor, role esa uch turdan biri:
+Xodim o‘zi ro‘yxatdan o‘tmaydi — uni Administrator yoki Direktor yaratadi. Panelga **username + parol** bilan kiradi. Yaratilganda (yoki parol tiklanganda) vaqtinchalik parol beriladi — birinchi kirishda xodim o‘z parolini o‘rnatadi. Parol: kamida 8 belgi, kamida 1 harf va 1 raqam. Har bir xodimning bitta role’i bor, role esa uch turdan biri:
 
 | Role turi | Huquqlar |
 |-----------|----------|
