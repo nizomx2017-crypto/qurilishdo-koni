@@ -1,32 +1,25 @@
-// "Savatchaga" tugmasi uchun umumiy mantiq: login bo'lmasa — kirish sahifasiga yuboradi
+// "Savatchaga" tugmasi uchun umumiy mantiq. Login kerak emas — savatcha brauzerda saqlanadi.
 import { useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 import { useToast } from '../../context/ToastContext';
 
 export default function useAddToCart() {
-  const { user } = useAuth();
-  const { add } = useCart();
+  const { add, items } = useCart();
   const notify = useToast();
-  const navigate = useNavigate();
-  const location = useLocation();
-  const [busyId, setBusyId] = useState(null);
+  const [busyId] = useState(null);
 
-  const addToCart = async (product, qty = 1) => {
-    if (!user) {
-      notify('Savatchaga qo‘shish uchun avval tizimga kiring', 'info');
-      navigate('/kirish', { state: { from: location.pathname } });
+  const addToCart = (product, qty = 1) => {
+    const inCart = items.find((it) => it.product_id === product.id)?.quantity || 0;
+    if (inCart >= product.stock_quantity) {
+      notify(`"${product.name}": omborda faqat ${product.stock_quantity} ${product.unit} bor`, 'bad');
       return;
     }
-    setBusyId(product.id);
-    try {
-      await add(product.id, qty);
+    const total = Math.min(inCart + qty, product.stock_quantity);
+    add(product.id, qty, product.stock_quantity);
+    if (inCart + qty > product.stock_quantity) {
+      notify(`"${product.name}": savatchada ${total} ${product.unit} (omborda shuncha bor)`, 'info');
+    } else {
       notify(`"${product.name}" savatchaga qo‘shildi`);
-    } catch (e) {
-      notify(e.message, 'bad');
-    } finally {
-      setBusyId(null);
     }
   };
 

@@ -1,22 +1,17 @@
-// Yuqori menyu: logotip, bo'limlar, savatcha soni, kirish/chiqish. Mobil ekranda ☰ orqali ochiladi.
+// Ochiq qism sarlavhasi: logotip, katalog, savatcha soni, "Kirish" (xodimlar uchun) yoki "Panelga o'tish".
+// Mobil ekranda ☰ orqali ochiladi. Mijoz uchun akkaunt yo'q.
 import { useEffect, useState } from 'react';
-import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 
 export default function Header() {
-  const { user, isAdmin, logout } = useAuth();
-  const { cart } = useCart();
+  const { user } = useAuth();
+  const { count } = useCart();
   const [open, setOpen] = useState(false);
   const location = useLocation();
-  const navigate = useNavigate();
 
   useEffect(() => setOpen(false), [location.pathname]);
-
-  const onLogout = () => {
-    logout();
-    navigate('/');
-  };
 
   return (
     <header className="header">
@@ -35,27 +30,13 @@ export default function Header() {
 
         <nav className={`nav ${open ? 'is-open' : ''}`}>
           <NavLink to="/" end>Katalog</NavLink>
-          {user && (
-            <>
-              <NavLink to="/savatcha">
-                Savatcha {cart.count > 0 && <span className="pill">{cart.count}</span>}
-              </NavLink>
-              <NavLink to="/buyurtmalarim">Buyurtmalarim</NavLink>
-            </>
-          )}
-          {isAdmin && <NavLink to="/admin">Admin</NavLink>}
+          <NavLink to="/savatcha">
+            Savatcha {count > 0 && <span className="pill">{count}</span>}
+          </NavLink>
           <span className="nav-sep" />
-          {user ? (
-            <>
-              <span className="nav-user" title={user.email}>{user.full_name}</span>
-              <button className="btn ghost small" onClick={onLogout}>Chiqish</button>
-            </>
-          ) : (
-            <>
-              <NavLink to="/kirish">Kirish</NavLink>
-              <Link to="/royxatdan-otish" className="btn primary small">Ro‘yxatdan o‘tish</Link>
-            </>
-          )}
+          {user
+            ? <Link to="/panel" className="btn primary small">Panelga o‘tish</Link>
+            : <Link to="/panel/login" className="btn ghost small">Kirish</Link>}
         </nav>
       </div>
     </header>

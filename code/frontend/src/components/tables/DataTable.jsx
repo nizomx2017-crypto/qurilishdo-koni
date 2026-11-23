@@ -1,4 +1,5 @@
-// Asosiy jadval: ustunlar registry (meta) dan olinadi, sarlavha bosilsa tartiblanadi
+// Asosiy jadval: ustunlar registry (meta) dan olinadi, sarlavha bosilsa tartiblanadi.
+// onEdit / onDelete berilmasa (huquq yo'q) — tegishli tugma ko'rsatilmaydi.
 import { VALUE_LABELS, VALUE_TONE, formatMoney, formatNumber, formatDate } from '../../utils/format';
 
 function Cell({ col, row }) {
@@ -22,6 +23,7 @@ function Cell({ col, row }) {
 
 export default function DataTable({ columns, rows, sort, order, onSort, onEdit, onDelete, loading }) {
   const visible = columns.filter((c) => !c.hidden);
+  const hasActions = Boolean(onEdit || onDelete);
 
   const header = (name, label, right) => (
     <th key={name} className={right ? 'right' : ''} onClick={() => onSort(name)}>
@@ -37,7 +39,7 @@ export default function DataTable({ columns, rows, sort, order, onSort, onEdit, 
           <tr>
             {header('id', 'ID')}
             {visible.map((c) => header(c.name, c.label, c.type === 'money' || c.type === 'number'))}
-            <th className="right actions-col">Amallar</th>
+            {hasActions && <th className="right actions-col">Amallar</th>}
           </tr>
         </thead>
         <tbody>
@@ -49,15 +51,17 @@ export default function DataTable({ columns, rows, sort, order, onSort, onEdit, 
                   <Cell col={c} row={row} />
                 </td>
               ))}
-              <td className="right actions">
-                <button className="icon-btn" title="Tahrirlash" onClick={() => onEdit(row)}>✏️</button>
-                <button className="icon-btn danger" title="O'chirish" onClick={() => onDelete(row)}>🗑️</button>
-              </td>
+              {hasActions && (
+                <td className="right actions">
+                  {onEdit && <button className="icon-btn" title="Tahrirlash" onClick={() => onEdit(row)}>✏️</button>}
+                  {onDelete && <button className="icon-btn danger" title="O'chirish" onClick={() => onDelete(row)}>🗑️</button>}
+                </td>
+              )}
             </tr>
           ))}
           {!rows.length && !loading && (
             <tr>
-              <td colSpan={visible.length + 2} className="empty">Ma'lumot topilmadi</td>
+              <td colSpan={visible.length + (hasActions ? 2 : 1)} className="empty">Ma'lumot topilmadi</td>
             </tr>
           )}
         </tbody>

@@ -1,10 +1,13 @@
 /**
- * Admin uchun umumiy CRUD sahifasi (kategoriyalar, mahsulotlar).
+ * Panel uchun umumiy CRUD sahifasi (kategoriyalar, mahsulotlar).
  * Ustunlar va forma maydonlari backenddagi registry'dan keladi (GET /api/admin/meta).
+ * Tugmalar huquqqa qarab: <PAGE>_CREATE / _UPDATE / _DELETE, status maydoni — _ARCHIVE.
  */
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../services/api';
 import { useToast } from '../../context/ToastContext';
+import { useAuth } from '../../context/AuthContext';
+import Can from '../../components/auth/Can';
 import DataTable from '../../components/tables/DataTable';
 import Pagination from '../../components/tables/Pagination';
 import RecordForm from '../../components/forms/RecordForm';
@@ -15,6 +18,7 @@ let metaCache = null; // meta o'zgarmaydi — tablar orasida qayta yuklamaslik u
 
 export default function AdminResourcePage({ resourceKey }) {
   const notify = useToast();
+  const { hasAccess } = useAuth();
   const [resource, setResource] = useState(null);
   const [query, setQuery] = useState(INITIAL_QUERY);
   const [searchText, setSearchText] = useState('');
@@ -89,6 +93,8 @@ export default function AdminResourcePage({ resourceKey }) {
     }
   };
 
+  const can = (action) => Boolean(resource) && hasAccess(`${resource.page}_${action}`);
+
   return (
     <>
       <div className="topbar">
@@ -102,9 +108,13 @@ export default function AdminResourcePage({ resourceKey }) {
             onChange={(e) => setSearchText(e.target.value)}
             aria-label="Qidiruv"
           />
-          <button className="btn primary" onClick={() => setEditing('new')} disabled={!resource}>
-            + Qo'shish
-          </button>
+          {resource && (
+            <Can access={`${resource.page}_CREATE`}>
+              <button className="btn primary" onClick={() => setEditing('new')}>
+                + Qo'shish
+              </button>
+            </Can>
+          )}
         </div>
       </div>
 
@@ -118,8 +128,8 @@ export default function AdminResourcePage({ resourceKey }) {
               sort={query.sort}
               order={query.order}
               onSort={onSort}
-              onEdit={(row) => setEditing(row)}
-              onDelete={(row) => setDeleting(row)}
+              onEdit={can('UPDATE') ? (row) => setEditing(row) : undefined}
+              onDelete={can('DELETE') ? (row) => setDeleting(row) : undefined}
               loading={loading}
             />
             <Pagination
@@ -141,6 +151,7 @@ export default function AdminResourcePage({ resourceKey }) {
           record={editing === 'new' ? null : editing}
           onClose={() => setEditing(null)}
           onSaved={onSaved}
+          lockedFields={editing !== 'new' && !can('ARCHIVE') ? ['status'] : []}
         />
       )}
 

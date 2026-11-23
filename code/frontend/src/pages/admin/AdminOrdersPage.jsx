@@ -1,7 +1,9 @@
-// Admin: barcha buyurtmalar — holat bo'yicha filtr, qidiruv va holatni o'zgartirish
+// Panel: barcha buyurtmalar — holat bo'yicha filtr, qidiruv va holatni o'zgartirish.
+// Tasdiqlash (new -> confirmed) — ORDER_APPROVE, qolgan o'tishlar — ORDER_UPDATE.
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../services/api';
 import { useToast } from '../../context/ToastContext';
+import { useAuth } from '../../context/AuthContext';
 import { ORDER_TRANSITIONS, VALUE_LABELS, formatDate, formatMoney } from '../../utils/format';
 import OrderItems from '../../components/shop/OrderItems';
 import StatusBadge from '../../components/shop/StatusBadge';
@@ -12,6 +14,8 @@ const STATUSES = ['new', 'confirmed', 'shipped', 'delivered', 'cancelled'];
 
 export default function AdminOrdersPage() {
   const notify = useToast();
+  const { hasAccess } = useAuth();
+  const canMove = (status) => hasAccess(status === 'confirmed' ? 'ORDER_APPROVE' : 'ORDER_UPDATE');
   const [query, setQuery] = useState({ page: 1, limit: 10, status: '', search: '' });
   const [searchText, setSearchText] = useState('');
   const [result, setResult] = useState({ data: [], total: 0, pages: 1 });
@@ -66,7 +70,7 @@ export default function AdminOrdersPage() {
           <input
             className="search"
             type="search"
-            placeholder="№, mijoz, email yoki telefon…"
+            placeholder="№, mijoz yoki telefon…"
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
             aria-label="Qidiruv"
@@ -83,19 +87,19 @@ export default function AdminOrdersPage() {
 
       <div className={loading ? 'is-loading' : ''}>
         {result.data.map((o) => {
-          const next = ORDER_TRANSITIONS[o.status] || [];
+          const next = (ORDER_TRANSITIONS[o.status] || []).filter(canMove);
           return (
             <details key={o.id} className="card order">
               <summary className="order-head">
                 <span className="order-id">№{o.id}</span>
-                <span className="order-user">{o.user_name}</span>
+                <span className="order-user">{o.customer_name}</span>
                 <span className="dim">{formatDate(o.created_at)}</span>
                 <StatusBadge value={o.status} />
                 <b className="order-sum">{formatMoney(o.total_amount)}</b>
               </summary>
               <div className="order-body">
                 <div className="order-meta">
-                  <div><span className="dim">Mijoz:</span> {o.user_name} ({o.user_email})</div>
+                  <div><span className="dim">Mijoz:</span> {o.customer_name}</div>
                   <div><span className="dim">Telefon:</span> {o.phone}</div>
                   <div><span className="dim">Manzil:</span> {o.address}</div>
                   {o.note && <div><span className="dim">Izoh:</span> {o.note}</div>}

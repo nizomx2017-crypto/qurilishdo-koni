@@ -8,7 +8,8 @@ import Modal from '../modals/Modal';
 import { api } from '../../services/api';
 import { VALUE_LABELS } from '../../utils/format';
 
-export default function RecordForm({ resource, record, onClose, onSaved }) {
+// lockedFields — huquq yo'qligi uchun o'zgartirib bo'lmaydigan maydonlar (masalan arxivlash huquqisiz status)
+export default function RecordForm({ resource, record, onClose, onSaved, lockedFields = [] }) {
   const isEdit = Boolean(record);
   const fields = resource.columns.filter((c) => !c.readonly);
 
@@ -47,6 +48,7 @@ export default function RecordForm({ resource, record, onClose, onSaved }) {
     setMessage('');
     const payload = { ...values };
     if (isEdit && !payload.password) delete payload.password; // parol bo'sh => o'zgarmaydi
+    lockedFields.forEach((name) => { if (isEdit) delete payload[name]; });
     try {
       const saved = isEdit
         ? await api.admin.update(resource.key, record.id, payload)
@@ -61,7 +63,10 @@ export default function RecordForm({ resource, record, onClose, onSaved }) {
   }
 
   const input = (c) => {
-    const common = { id: `f-${c.name}`, value: values[c.name], onChange: (e) => set(c.name, e.target.value) };
+    const common = {
+      id: `f-${c.name}`, value: values[c.name], onChange: (e) => set(c.name, e.target.value),
+      disabled: lockedFields.includes(c.name),
+    };
     switch (c.type) {
       case 'textarea':
         return <textarea rows={3} {...common} />;
